@@ -1,0 +1,4 @@
+.coverage
+beocijies.egg-info/
+build/
+dist/
