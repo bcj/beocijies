@@ -82,6 +82,9 @@ You should edit the index page under the same conditions you expect users to upd
 
 If you rerun this script, it shouldn't erase your users or any existing templates but it will update your settings.
 
+Your site name and domain aren't hardcoded into pages, updating the settings file should be enough to change them on all user pages.
+If you're using the script-generated nginx template, you will need to regenerate it if you change domain names.
+
 ### Creating a user
 
 ```sh
@@ -91,7 +94,7 @@ beocijies add NAME
 The user's name should be unique across both the mobile and the desktop site.
 If the user wants to be included in the site directory, you should pass the `--public` flag.
 
-If the user needs a mobile page, pass the `--mobile` flag and if they _only_ need a mobile page, you should also pass the `--no-desktop` flag.
+By default, pages are made for both desktop and mobile environments. Pass either `--desktop` or `--mobile` to only generate a page for that environment.
 
 Rerunning add on an existing user will update the settings for their publicness, and whether they have desktop and mobile sites.
 It will create template files for the required environments, but will not overwrite any existing templates.
@@ -147,5 +150,4 @@ Here's what needs to get done before this gets even a preliminary release
 * nginx assumes desktop and mobile for each user
 * just make people point at the nginx root instead of the servers folder
 * the thread pool stuff might be bad if there are a ton of users?
-* change the options for users to --desktop, --mobile, --both?
 * switch from print statements to logging

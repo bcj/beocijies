@@ -72,10 +72,18 @@ def main(input_args: Optional[List[str]] = None):
     add_parser.add_argument(
         "--public", action="store_true", help="List the user in the index"
     )
-    add_parser.add_argument(
-        "--no-desktop", dest="desktop", action="store_false", help="Make a default page"
+    add_parser.set_defaults(mobile=True, desktop=True)
+    env_parser = add_parser.add_mutually_exclusive_group()
+    env_parser.add_argument(
+        "--desktop",
+        dest="mobile",
+        action="store_false", help="Only create a desktop page for the user"
     )
-    add_parser.add_argument("--mobile", action="store_true", help="Make a mobile page")
+    env_parser.add_argument(
+        "--mobile",
+        dest="desktop",
+        action="store_false", help="Only create a desktop page for the user"
+    )
     add_parser.add_argument(
         "--nginx",
         nargs="?",
