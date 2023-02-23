@@ -136,7 +136,6 @@ You might notice that this is version `0.1.0-dev`.
 Here's what needs to get done before this gets even a preliminary release
 * Some tests would sure be nice
 * This should generate a test html page for a user to edit directly for building on computers without beocijies installed
-* Mobile -> Desktop links will be broken for the supplied nginx configuration
 * Add user should give you the certbot command to run after creating a user
   * reminder (see caveats in todos below):
     * edit cname for user, www.user, m.user
@@ -152,3 +151,5 @@ Here's what needs to get done before this gets even a preliminary release
 * the thread pool stuff might be bad if there are a ton of users?
 * fix logging for render
 * clean up render more generally
+* links in desktop pages from mobile links are probably broken for nginx
+  * switch to making links absolute by default and then add a special testing flag for mobile site generation

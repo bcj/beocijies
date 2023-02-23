@@ -8,6 +8,7 @@ from datetime import datetime
 from multiprocessing import Pool, get_logger
 from pathlib import Path
 from shutil import copy2, copytree
+from subprocess import check_call
 from time import sleep
 from typing import Dict, List, Optional
 
@@ -45,6 +46,9 @@ def render(directory: Path, users: Optional[List[str]] = None, live=False):
             mobile_static = mobile_directory / "static"
 
             (destination / "mobile").mkdir(exist_ok=True)
+            fake_desktop = destination / "mobile" / "desktop"
+            if not fake_desktop.is_symlink():
+                check_call(("ln", "-s", str(destination), str(fake_desktop)))
 
             for path in mobile_static.iterdir():
                 if path.is_file():
@@ -147,7 +151,7 @@ def watch_site(
 
         local_users = users
     else:
-        desktop_path = f"{dots}/../{{}}/index.html"
+        desktop_path = f"{dots}/desktop/{{}}/index.html"
         mobile_path = f"{dots}/{{}}/index.html"
 
         paths = {name: mobile_path.format(name) for name in mobile_users}
