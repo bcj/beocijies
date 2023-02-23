@@ -2,6 +2,7 @@
 Configure the website
 """
 import json
+import logging
 from pathlib import Path
 from shutil import copy2
 from typing import Dict, List, Optional, Union
@@ -196,7 +197,7 @@ def add_user(
         config = json.load(stream)
 
     if name in config["users"]:
-        print("updating", name)
+        logging.info("updating existing user %s", name)
 
     config["users"][name] = {
         "public": public,
@@ -220,11 +221,14 @@ def add_user(
         template = templates / f"{name}.html.jinja2"
 
         if not template.exists():
+            logging.debug("Creating template %s", template)
             copy2(templates / "default.html.jinja2", template)
 
+        logging.debug("Creating static directory")
         (path / "static" / name).mkdir(exist_ok=True)
 
     if nginx:
+        logging.info("Generating nginx configuration")
         base = config["domain"]
         domains = [base]
 
@@ -253,8 +257,10 @@ def mobile_import(directory: Path):
 
     for user, info in mobile_config["users"].items():
         if user not in config["users"]:
+            logging.info("creating user %s", user)
             config["users"][user] = info
-        else:
+        elif info["mobile"] != config["users"][user]["mobile"]:
+            logging.info("updating mobile settings for %s", user)
             config["users"][user]["mobile"] = True
 
     save_config(config, directory)
@@ -262,6 +268,7 @@ def mobile_import(directory: Path):
 
 def save_config(config: dict, directory: Path):
     path = directory / FILENAME
+    logging.debug("saving config %s", path)
     with path.open("w") as stream:
         json.dump(
             config,
@@ -272,6 +279,7 @@ def save_config(config: dict, directory: Path):
 
     if config["mobile"]:
         mobile = Path(config["mobile"])
+        logging.debug("saving config %s", mobile / FILENAME)
         with (mobile / FILENAME).open("w") as stream:
             json.dump(
                 {**config, "destination": str(mobile / "test-build")},

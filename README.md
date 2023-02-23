@@ -150,4 +150,3 @@ Here's what needs to get done before this gets even a preliminary release
 * nginx assumes desktop and mobile for each user
 * just make people point at the nginx root instead of the servers folder
 * the thread pool stuff might be bad if there are a ton of users?
-* switch from print statements to logging

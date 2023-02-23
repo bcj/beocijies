@@ -1,6 +1,7 @@
 """
 Run beocijies from the command line
 """
+import logging
 from argparse import ArgumentParser
 from pathlib import Path
 from typing import List, Optional
@@ -16,6 +17,15 @@ def main(input_args: Optional[List[str]] = None):
     Run beocijies from the command line.
     """
     parser = ArgumentParser(description="Manage a beocijies site")
+
+    parser.set_defaults(log_level=logging.INFO)
+    parser.add_argument(
+        "--debug",
+        dest="log_level",
+        action="store_const",
+        const=logging.DEBUG,
+        help="Show debug logs",
+    )
 
     subparsers = parser.add_subparsers(dest="command", description="beocijies commands")
 
@@ -77,12 +87,14 @@ def main(input_args: Optional[List[str]] = None):
     env_parser.add_argument(
         "--desktop",
         dest="mobile",
-        action="store_false", help="Only create a desktop page for the user"
+        action="store_false",
+        help="Only create a desktop page for the user",
     )
     env_parser.add_argument(
         "--mobile",
         dest="desktop",
-        action="store_false", help="Only create a desktop page for the user"
+        action="store_false",
+        help="Only create a desktop page for the user",
     )
     add_parser.add_argument(
         "--nginx",
@@ -117,6 +129,8 @@ def main(input_args: Optional[List[str]] = None):
     )
 
     args = parser.parse_args()
+
+    logging.basicConfig(format="%(message)s", level=args.log_level)
 
     if args.command in ("create", "add"):
         if args.nginx is not False:

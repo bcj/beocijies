@@ -2,13 +2,14 @@
 Render the beocijies sites
 """
 import json
+import logging
 import re
 from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
 from shutil import copy2, copytree
 from time import sleep
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -171,7 +172,7 @@ def watch_site(
                 modified_times[path] = modified_time
 
                 if path != template_file:
-                    print("copying", path)
+                    logging.info("copying %s", path)
                     if path.is_dir():
                         copytree(path, destination)
                     else:
@@ -194,7 +195,7 @@ def watch_site(
             template = environment.get_template(template_file.name)
 
             try:
-                print("rendering page for ", user)
+                logging.info("rendering page for %s", user)
                 with (destination / "index.html").open("w") as stream:
                     stream.write(
                         template.render(
@@ -208,8 +209,8 @@ def watch_site(
                             users=local_users,
                         )
                     )
-            except Exception as exception:
-                print(f"updating page failed: {exception!r}")
+            except Exception:
+                logging.exception("updating page ofr %s failed", user)
 
         loop = live or changed
         if loop:
