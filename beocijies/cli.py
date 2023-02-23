@@ -130,7 +130,9 @@ def main(input_args: Optional[List[str]] = None):
 
     args = parser.parse_args()
 
-    logging.basicConfig(format="%(message)s", level=args.log_level)
+    logger = logging.getLogger("beocijies")
+    logger.setLevel(level=args.log_level)
+    logger.addHandler(logging.StreamHandler())
 
     if args.command in ("create", "add"):
         if args.nginx is not False:

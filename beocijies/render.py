@@ -5,7 +5,7 @@ import json
 import logging
 import re
 from datetime import datetime
-from multiprocessing import Pool
+from multiprocessing import Pool, get_logger
 from pathlib import Path
 from shutil import copy2, copytree
 from time import sleep
@@ -125,6 +125,10 @@ def watch_site(
     site_type: str,
     live: bool = False,
 ):
+    logger = get_logger()
+    logger.addHandler(logging.StreamHandler())
+    logger.setLevel(logging.INFO)
+
     page_date = "Never"
     latest_image = None
     image_number = 0
@@ -172,7 +176,7 @@ def watch_site(
                 modified_times[path] = modified_time
 
                 if path != template_file:
-                    logging.info("copying %s", path)
+                    logger.info("copying %s", path)
                     if path.is_dir():
                         copytree(path, destination)
                     else:
@@ -195,7 +199,7 @@ def watch_site(
             template = environment.get_template(template_file.name)
 
             try:
-                logging.info("rendering page for %s", user)
+                logger.info("rendering page for %s", user)
                 with (destination / "index.html").open("w") as stream:
                     stream.write(
                         template.render(
@@ -210,8 +214,8 @@ def watch_site(
                         )
                     )
             except Exception:
-                logging.exception("updating page ofr %s failed", user)
+                logger.exception("updating page for %s failed", user)
 
-        loop = live or changed
+        loop = live
         if loop:
             sleep(2)
