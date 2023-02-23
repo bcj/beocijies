@@ -4,7 +4,7 @@ Configure the website
 import json
 from pathlib import Path
 from shutil import copy2
-from typing import Optional
+from typing import Dict, List, Optional, Union
 
 from jinja2 import Template
 
@@ -92,13 +92,13 @@ def create(
     mobile: Optional[Path] = None,
     domain: str = "localhost",
     language: Optional[str] = None,
-    allowed_agents: Optional[list[str]] = None,
-    disallowed_agents: Optional[list[str]] = None,
+    allowed_agents: Optional[List[str]] = None,
+    disallowed_agents: Optional[List[str]] = None,
     robots: bool = False,
     subdomains: bool = False,
     nginx: Optional[Path] = None,
 ):
-    config: dict[str, Optional[str | bool | dict]] = {
+    config: Dict[str, Optional[Union[str, bool, dict]]] = {
         "version": __version__,
         "destination": str(destination.absolute()),
         "mobile": str(mobile.absolute()) if mobile else None,

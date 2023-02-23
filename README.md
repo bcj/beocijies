@@ -53,12 +53,11 @@ You can link to all the users with the following code:
 
 # Install
 
-Beocijies is being written/tested against Python 3.11.
-It should run fine on Python 3.10.
+Beocijies is being written/tested against Python 3.8.
 
 To install, download this repo and then run:
 ```sh
-python3.11 setup.py install
+python3 setup.py install
 ```
 
 This will add a `beocijies` command that is used to set up and update the site.

@@ -3,7 +3,7 @@ Run beocijies from the command line
 """
 from argparse import ArgumentParser
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from beocijies.configure import add_user, create, mobile_import
 from beocijies.render import render
@@ -11,7 +11,7 @@ from beocijies.render import render
 NGINX_DIRECTORY = Path("/opt/homebrew/etc/nginx/servers")
 
 
-def main(input_args: Optional[list[str]] = None):
+def main(input_args: Optional[List[str]] = None):
     """
     Run beocijies from the command line.
     """

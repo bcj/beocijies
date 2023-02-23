@@ -8,14 +8,14 @@ from multiprocessing import Pool
 from pathlib import Path
 from shutil import copy2, copytree
 from time import sleep
-from typing import Optional
+from typing import List, Optional
 
 from jinja2 import Environment, FileSystemLoader
 
 from beocijies.configure import FILENAME
 
 
-def render(directory: Path, users: Optional[list[str]] = None, live=False):
+def render(directory: Path, users: Optional[List[str]] = None, live=False):
     with (directory / FILENAME).open("r") as stream:
         config = json.load(stream)
 
@@ -116,8 +116,8 @@ def watch_site(
     template_file: Path,
     static: Path,
     destination: Path,
-    users: list[str],
-    mobile_users: list[str],
+    users: List[str],
+    mobile_users: List[str],
     language: Optional[str],
     site_url: str,
     site_name: str,
@@ -127,7 +127,7 @@ def watch_site(
     page_date = "Never"
     latest_image = None
     image_number = 0
-    modified_times: dict[Path, int] = {}
+    modified_times: Dict[Path, int] = {}
 
     destination.mkdir(exist_ok=True)
 

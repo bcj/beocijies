@@ -4,6 +4,7 @@ To install:
     python setup.py install
 """
 from pathlib import Path
+from typing import List
 
 from setuptools import setup
 
@@ -13,7 +14,7 @@ DIRECTORY = Path(__file__).parent
 REQUIREMENTS = DIRECTORY / "requirements"
 
 
-def read_requirements(path: Path) -> list[str]:
+def read_requirements(path: Path) -> List[str]:
     with path.open("r") as stream:
         return [line for line in stream.read().splitlines() if line]
 
