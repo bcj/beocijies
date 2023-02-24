@@ -17,7 +17,12 @@ from jinja2 import Environment, FileSystemLoader
 from beocijies.configure import FILENAME
 
 
-def render(directory: Path, users: Optional[List[str]] = None, live=False):
+def render(
+    directory: Path,
+    users: Optional[List[str]] = None,
+    live: bool = False,
+    absolute: bool = False,
+):
     with (directory / FILENAME).open("r") as stream:
         config = json.load(stream)
 
@@ -47,7 +52,7 @@ def render(directory: Path, users: Optional[List[str]] = None, live=False):
 
             (destination / "mobile").mkdir(exist_ok=True)
             fake_desktop = destination / "mobile" / "desktop"
-            if not fake_desktop.is_symlink():
+            if not (absolute or fake_desktop.is_symlink()):
                 check_call(("ln", "-s", str(destination), str(fake_desktop)))
 
             for path in mobile_static.iterdir():
@@ -81,6 +86,7 @@ def render(directory: Path, users: Optional[List[str]] = None, live=False):
                         config["name"],
                         "desktop",
                         live,
+                        absolute,
                     )
                 )
 
@@ -108,6 +114,7 @@ def render(directory: Path, users: Optional[List[str]] = None, live=False):
                         config["name"],
                         "mobile",
                         live,
+                        absolute,
                     )
                 )
 
@@ -128,6 +135,7 @@ def watch_site(
     site_name: str,
     site_type: str,
     live: bool = False,
+    absolute: bool = False,
 ):
     logger = get_logger()
     logger.addHandler(logging.StreamHandler())
@@ -140,25 +148,42 @@ def watch_site(
 
     destination.mkdir(exist_ok=True)
 
-    dots = "." if user == "index" else ".."
-    if site_type == "desktop":
-        desktop_path = f"{dots}/{{}}/index.html"
-        mobile_path = f"{dots}/mobile/{{}}/index.html"
+    if absolute:
+        desktop_path = f"{site_url}/{{}}/.index.html"
+        mobile_path = f"m.{site_url}/{{}}/.index.html"
 
-        paths = {name: desktop_path.format(name) for name in users}
-        for name in mobile_users:
-            paths.setdefault(name, mobile_path.format(name))
+        if site_type == "desktop":
+            local_users = users
 
-        local_users = users
+            paths = {name: desktop_path.format(name) for name in users}
+            for name in mobile_users:
+                paths.setdefault(name, mobile_path.format(name))
+        else:
+            paths = {name: mobile_path.format(name) for name in mobile_users}
+            for name in users:
+                paths.setdefault(name, desktop_path.format(name))
+
+            local_users = mobile_users
     else:
-        desktop_path = f"{dots}/desktop/{{}}/index.html"
-        mobile_path = f"{dots}/{{}}/index.html"
+        dots = "." if user == "index" else ".."
+        if site_type == "desktop":
+            desktop_path = f"{dots}/{{}}/index.html"
+            mobile_path = f"{dots}/mobile/{{}}/index.html"
 
-        paths = {name: mobile_path.format(name) for name in mobile_users}
-        for name in users:
-            paths.setdefault(name, desktop_path.format(name))
+            paths = {name: desktop_path.format(name) for name in users}
+            for name in mobile_users:
+                paths.setdefault(name, mobile_path.format(name))
 
-        local_users = mobile_users
+            local_users = users
+        else:
+            desktop_path = f"{dots}/desktop/{{}}/index.html"
+            mobile_path = f"{dots}/{{}}/index.html"
+
+            paths = {name: mobile_path.format(name) for name in mobile_users}
+            for name in users:
+                paths.setdefault(name, desktop_path.format(name))
+
+            local_users = mobile_users
 
     def get_user(name: str) -> str:
         if name in paths:

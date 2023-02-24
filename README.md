@@ -151,5 +151,3 @@ Here's what needs to get done before this gets even a preliminary release
 * the thread pool stuff might be bad if there are a ton of users?
 * fix logging for render
 * clean up render more generally
-* links in desktop pages from mobile links are probably broken for nginx
-  * switch to making links absolute by default and then add a special testing flag for mobile site generation

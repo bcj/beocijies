@@ -117,6 +117,9 @@ def main(input_args: Optional[List[str]] = None):
     render_parser.add_argument(
         "--live", action="store_true", help="Watch for further changes"
     )
+    render_parser.add_argument(
+        "--absolute", action="store_true", help="Use absolute links"
+    )
 
     mobile_parser = subparsers.add_parser(
         "mobile-sync", help="Pull in new mobile users"
@@ -162,7 +165,7 @@ def main(input_args: Optional[List[str]] = None):
             nginx=args.nginx,
         )
     elif args.command == "render":
-        render(args.directory, users=args.users, live=args.live)
+        render(args.directory, users=args.users, live=args.live, absolute=args.absolute)
     elif args.command == "mobile-sync":
         mobile_import(args.directory)
     else:
