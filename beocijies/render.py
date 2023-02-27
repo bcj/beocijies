@@ -149,8 +149,8 @@ def watch_site(
     destination.mkdir(exist_ok=True)
 
     if absolute:
-        desktop_path = f"{site_url}/{{}}/.index.html"
-        mobile_path = f"m.{site_url}/{{}}/.index.html"
+        desktop_path = f"//{site_url}/{{}}/index.html"
+        mobile_path = f"//m.{site_url}/{{}}/index.html"
 
         if site_type == "desktop":
             local_users = users
