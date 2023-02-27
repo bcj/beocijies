@@ -75,12 +75,14 @@ server {
     listen [::]:80;
 
     location / {
-        root {{path}}/mobile/;
+        root {{path}}/mobile/{% if user %}{{user}}/{% endif %};
     }
 
+    {% if not user %}
     location /desktop {
-        root {{path}}/{% if user %}{{user}}/{% endif %};
+        root {{path}}/;
     }
+    {% endif %}
 }
 {% endif %}
 {% endfor %}
