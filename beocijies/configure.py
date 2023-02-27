@@ -33,7 +33,7 @@ BASE_TEMPLATE = """<!DOCTYPE html>
         {% block body %}{% endblock %}
         <footer>
             <hr>
-            {% if me != "index "%}<a href="{{"../index.html"}}">a {{site_name}} site</a><br>{% endif %}
+            {% if me != "index "%}<a href="{{site_url}}">a {{site_name}} site</a><br>{% endif %}
             <em>last updated {{page_date}}</em><br>
             {% if latest_image -%}
                 <img style="max-width: 100%; max-height: 500px;" src="{{latest_image}}" alt="{{me}} updating their {{site_name}} site">
