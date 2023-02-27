@@ -281,11 +281,13 @@ def save_config(config: dict, directory: Path):
 
     if config["mobile"]:
         mobile = Path(config["mobile"])
-        LOGGER.debug("saving config %s", mobile / FILENAME)
-        with (mobile / FILENAME).open("w") as stream:
-            json.dump(
-                {**config, "destination": str(mobile / "test-build")},
-                stream,
-                sort_keys=True,
-                indent=4,
-            )
+
+        if mobile.exists():
+            LOGGER.debug("saving config %s", mobile / FILENAME)
+            with (mobile / FILENAME).open("w") as stream:
+                json.dump(
+                    {**config, "destination": str(mobile / "test-build")},
+                    stream,
+                    sort_keys=True,
+                    indent=4,
+                )
