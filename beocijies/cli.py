@@ -138,7 +138,7 @@ def main(input_args: Optional[List[str]] = None):
     logger.addHandler(logging.StreamHandler())
 
     if args.command in ("create", "add"):
-        if args.nginx is not False:
+        if not args.nginx and args.nginx is not False:
             args.nginx = NGINX_DIRECTORY
 
     if args.command == "create":

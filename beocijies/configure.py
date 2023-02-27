@@ -56,19 +56,21 @@ DEFAULT_TEMPLATE = """{% extends "base.html.jinja2" %}
 
 
 NGINX_TEMPLATE = """
-{% for domain in domains %}
+{% for user, desktop, mobile in users %}
+{% if desktop %}
 server {
-    server_name {{domain}} www.{{domain}};
+    server_name {% if user %}{{user}}.{% endif %}{{domain}} www.{% if user %}{{user}}.{% endif %}{{domain}};
     listen 80;
     listen [::]:80;
 
     location / {
-        root {{path}}/;
+        root {{path}}/{% if user %}{{user}}/{% endif %};
     }
 }
+{% endif %}
 {% if mobile %}
 server {
-    server_name m.{{domain}};
+    server_name m.{% if user %}{{user}}.{% endif %}{{domain}};
     listen 80;
     listen [::]:80;
 
@@ -77,12 +79,12 @@ server {
     }
 
     location /desktop {
-        root {{path}}/;
+        root {{path}}/{% if user %}{{user}}/{% endif %};
     }
 }
 {% endif %}
 {% endfor %}
-"""
+"""  # noqa: E501
 
 LOGGER = logging.getLogger("beocijies")
 
@@ -232,20 +234,21 @@ def add_user(
     if nginx:
         LOGGER.info("Generating nginx configuration")
         base = config["domain"]
-        domains = [base]
+        users = []
 
         if config["subdomains"]:
-            for user in config["users"]:
-                if user != "index":
-                    domains.append(f"{user}.{base}")
+            for user, info in config["users"].items():
+                if user == "index":
+                    user = ""
+                users.append((user, info["desktop"], info["mobile"]))
 
         nginx_template = Template(NGINX_TEMPLATE)
         with (nginx / base).open("w") as stream:
             stream.write(
                 nginx_template.render(
-                    domains=domains,
+                    domain=base,
+                    users=users,
                     path=config["destination"],
-                    mobile=bool(config["mobile"]),
                 )
             )
 
