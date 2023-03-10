@@ -127,6 +127,7 @@ def render(
                 "site_name": site_name,
                 "user": get_user(user),
                 "users": public_users,
+                "neighbours": neighbours,
             },
         )
         for user in users
