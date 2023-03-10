@@ -170,7 +170,7 @@ def main(input_args: Optional[List[str]] = None):
         "--httpd",
         "--apache",
         type=Path,
-        help="Where to generate the virtual hosts file",
+        help="Where to generate the virtual hosts file (untested)",
     )
 
     connect_parser = subparsers.add_parser(

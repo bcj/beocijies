@@ -84,7 +84,7 @@ As long as you're fine manually copying the files over, this actually could be d
 The code in this repo will create all the required files, but doesn't come with a web-server.
 This project officially recommends using [NGINX](https://nginx.org/en/), and can automatically generate the configuration file required for hosting your site with NGINX.
 
-The project also has provisional support for [httpd (Apache)](https://httpd.apache.org/), but this is not guaranteed to be actively tested or maintained.
+The project also has provisional support for [httpd (Apache)](https://httpd.apache.org/), but it is completely untested and has not been confirmed to work
 
 The generated templates are all for HTTP, not HTTPS.
 This is done with the assumption that you'll then use [certbot](https://certbot.eff.org/) to set up SSL certificates for your site.
@@ -218,10 +218,7 @@ You will also need to update your server configuration and generate SSL certific
 If you want beocijies to generate an NGINX template for you, use the `--nginx` flag when running `create`/`add`/`rename`/`remove`.
 The script will try to find the server configuration directory NGINX is expecting, but if the directory is in a unexpected location, you'll need to pass the path along with the flag.
 
-If you want beocijies to generate an httpd (Apache) httpd-vhosts.conf file for use, use the `--httpd` flag when `create`/`add`/`rename`/`remove`, passing either the exact location to save the file, or the directory to save httpd-vhosts.conf in.
-You should consider this support provisional at best, as beocijies isn't run against httpd for either testing or in a live environment and I don't have a lot of experience with Apache server config.
-
-When you run commands with the `--nginx` or `--httpd` flags, it will tell you which subdomains need DNS records and the `certbot` command required to update your certificate (this assumes you've already set up a certbot account).
+When you run commands with the `--nginx` flag, it will tell you which subdomains need DNS records and the `certbot` command required to update your certificate (this assumes you've already set up a certbot account).
 
 ## Rendering Your Site
 
