@@ -17,6 +17,7 @@ from beocijies.configure import (
     rename_user,
 )
 from beocijies.render import LinkType, render
+from beocijies.version import __version__
 
 
 def main(input_args: Optional[List[str]] = None):
@@ -247,6 +248,8 @@ def main(input_args: Optional[List[str]] = None):
         "--fresh", action="store_true", help="delete existing files"
     )
 
+    subparsers.add_parser("version", help="Print beocijies version then exit")
+
     args = parser.parse_args()
 
     logger = logging.getLogger("beocijies")
@@ -322,6 +325,8 @@ def main(input_args: Optional[List[str]] = None):
             fresh=args.fresh,
             link_type=args.link_type,
         )
+    elif args.command == "version":
+        print(__version__)
     else:
         raise NotImplementedError(f"Haven't added support for command {args.command!r}")
 

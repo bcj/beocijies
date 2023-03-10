@@ -23,7 +23,7 @@ pip3 install beocijies
 
 You may also install it by, downloading this repo and then running:
 ```sh
-python3 setup.py install
+pip3 install .
 ```
 
 This will add a `beocijies` command that is used to set up and update the site.

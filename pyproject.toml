@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beocijies"
+version = "0.9.0"
+authors = [
+  { name="bcj", email="bcj@beocijies.com" },
+]
+description = "A site generator for small handmade sites"
+readme = "README.md"
+license = {file = "LICENSE.md"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Internet",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Internet :: WWW/HTTP :: Site Management",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+dependencies = [
+    "jinja2",
+    "requests",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/bcj/beocijies"
+
+[project.scripts]
+beocijies = "beocijies.cli:main"
