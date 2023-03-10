@@ -21,8 +21,6 @@ Beocijies is available on PyPI and can be installed by running:
 pip3 install beocijies
 ```
 
-TODO: That isn't yet true.
-
 You may also install it by, downloading this repo and then running:
 ```sh
 python3 setup.py install
@@ -334,4 +332,3 @@ I'll add some silly features if they sound fun and fix any bugs people run into.
 * A number of the tests for this are pretty rudimentary, and they don't even lint the nginx/httpd configurations that are generated
 * Actually, the apache stuff hasn't been tested at all yet.
 * Nothing's in place for migrating configuration files if updates include breaking changes. It will be added once it's needed
-* Tests for the render code

@@ -41,6 +41,21 @@ def render(
     live: bool = False,
     fresh: bool = False,
 ):
+    """
+    Render a website
+
+    directory: the directory containing the config file
+    users: Optionally, a list of users to render pages for. If not
+        supplied, all users and the index will be updated.
+    destination: Either, the location to render the site at, True, to
+        use the main destination in the config, or False/None to default
+        to a test destination if it is defined.
+    link_type: Either relative or absolute, or None to default based on
+        whether the site uses subdomains
+    live: Watch for new changes and continue to update as they appear.
+    fresh: Delete existing files before rendering. If supplied, a user
+        list cannot be supplied
+    """
     with (directory / FILENAME).open("r") as stream:
         config = json.load(stream)
 
@@ -65,9 +80,16 @@ def render(
     static = directory / "static"
     domain = config["domain"]
 
-    prefix = config.get("prefix") or "www"
+    if config.get("prefix"):
+        prefix = f"{config['prefix']}."
+    elif config.get("local", False):
+        prefix = ""
+    else:
+        prefix = "www."
+
+    protocol = config["protocol"]
     if link_type == LinkType.ABSOLUTE:
-        link_format = index_link_format = f"//{prefix}.{domain}/{{}}"
+        link_format = index_link_format = f"{protocol}://{prefix}{domain}/{{}}"
     else:
         link_format = "../{}/index.html"
         index_link_format = "./{}/index.html"
@@ -85,14 +107,14 @@ def render(
                 text = f"{name} ({site})"
                 if site in neighbours:
                     if name in neighbours[site]:
-                        text = f"<a href={neighbours[site][name]}>{text}</a>"
+                        text = f"<a href={neighbours[site][name]!r}>{text}</a>"
             elif name in public_users:
                 if user == "index":
                     format_string = index_link_format
                 else:
                     format_string = link_format
 
-                text = f"<a href={format_string.format(name)}>{name}</a>"
+                text = f"<a href={format_string.format(name)!r}>{name}</a>"
 
             return text
 
@@ -108,10 +130,9 @@ def render(
         if path.is_file():
             copy2(path, destination)
 
-    protocol = config["protocol"]
     with (destination / "users.json").open("w") as stream:
         json.dump(
-            {user: f"{protocol}://{prefix}.{domain}/{user}" for user in public_users},
+            {user: f"{protocol}://{prefix}{domain}/{user}" for user in public_users},
             stream,
             indent=4,
             sort_keys=True,

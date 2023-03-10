@@ -2,6 +2,7 @@
 Run beocijies from the command line
 """
 import logging
+import re
 from argparse import ArgumentParser
 from os import environ
 from pathlib import Path
@@ -98,6 +99,12 @@ def main(input_args: Optional[List[str]] = None):
         action="store_const",
         const="http",
         help="Serve the website over http, not https",
+    )
+    create_parser.add_argument(
+        "--local",
+        action="store_const",
+        const=True,
+        help="Don't serve the site on www.DOMAIN",
     )
 
     add_parser = subparsers.add_parser("add", help="Add a beocijies user")
@@ -256,6 +263,15 @@ def main(input_args: Optional[List[str]] = None):
         if args.domain is None:
             args.domain = environ.get("HOST", "localhost")
 
+        if args.local is None:
+            domain_base = args.domain.split("/", 1)[0]
+
+            args.local = bool(
+                "." not in domain_base  # localhost or computer name
+                or domain_base.endswith(".local")
+                or re.search(r"^[\d:.]+$", domain_base)  # some kind of ip address
+            )
+
         create(
             args.directory,
             args.destination,
@@ -271,6 +287,7 @@ def main(input_args: Optional[List[str]] = None):
             nginx=args.nginx,
             httpd=args.httpd,
             protocol=args.protocol,
+            local=args.local,
         )
     elif args.command == "add":
         add_user(

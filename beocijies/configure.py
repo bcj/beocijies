@@ -64,7 +64,7 @@ DEFAULT_TEMPLATE = """{% extends "#base.html.jinja2" %}
 
 NGINX_TEMPLATE = """
 server {
-    server_name {% if prefix %}{{prefix}}.{{domain}}{% else %}{{domain}} www.{{domain}}{% endif %};
+    server_name {% if prefix %}{{prefix}}.{{domain}}{% else %}{{domain}}{% if not local %} www.{{domain}}{% endif %}{% endif %};
     listen 80;
     listen [::]:80;
 
@@ -74,7 +74,7 @@ server {
 }
 {% for user in users %}
 server {
-    server_name {% if prefix %}{{prefix}}{% else %}{{url_safe_name(user)}}.{{domain}} www{% endif %}.{{url_safe_name(user)}}.{{domain}};
+    server_name {% if prefix %}{{prefix}}.{% else %}{% if not local %}www.{{url_safe_name(user)}}.{{domain}} {% endif %}{% endif %}{{url_safe_name(user)}}.{{domain}};
     listen 80;
     listen [::]:80;
 
@@ -90,16 +90,16 @@ HTTPD_TEMPLATE = """
     {% if url_path %}<Directory "{{url_path}}">
         {% endif %}DocumentRoot "{{path}}"{% if url_path %}
     </Directory>{% endif %}
-    ServerName {% if prefix %}{{prefix}}.{{domain}}{% else %}{{domain}}
-    ServerAlias www.{{domain}}{% endif %}
+    ServerName {% if prefix %}{{prefix}}.{{domain}}{% else %}{{domain}}{% if not local%}
+    ServerAlias www.{{domain}}{% endif %}{% endif %}
 </VirtualHost>
 {% for user in users %}
 <VirtualHost *:80>
     {% if url_path %}<Directory "{{url_path}}">
         {% endif %}DocumentRoot "{{path}}/{{user}}"{% if url_path %}
     </Directory>{% endif %}
-    ServerName {% if prefix %}{{prefix}}.{{user}}.{{domain}}{% else %}{{user}}.{{domain}}
-    ServerAlias www.{{user}}.{{domain}}{% endif %}
+    ServerName {% if prefix %}{{prefix}}.{{user}}.{{domain}}{% else %}{{user}}.{{domain}}{% if not local%}
+    ServerAlias www.{{user}}.{{domain}}{% endif %}{% endif %}
 </VirtualHost>
 {% endfor %}
 """  # noqa: E501
@@ -120,10 +120,36 @@ def create(
     disallowed_agents: Optional[List[str]] = None,
     robots: bool = False,
     subdomains: bool = False,
+    local: bool = False,
     nginx: Optional[Path] = None,
     httpd: Optional[Path] = None,
     protocol: str = "https",
 ):
+    """
+    Create a beocijies site
+
+    rerunning on the same directory will overwrite settings, but lists
+    of users and neighbouring sites will be maintained and no templates
+    or static files will be overwritten.
+
+    directory: Where to save the site
+    destination: Where the site should be rendered to
+    name: The name of your site
+    test_destination: If supplied, pages will be rendered here by default
+    domain: the url the site is hosted at.
+    prefix: a prefix that should be prepended to all pages (e.g., m).
+        If prefix is supplied, the page will not be configured to be
+        available at www.
+    language: The language site pages are written in (e.g., en-US)
+    allowed_agents: web crawlers that should be able to index the site
+    disallowed_agents: web crawlers that should be blocked from indexing
+        the site.
+    robots: whether web crawlerds are allowed by default
+    local: If true, don't use the www. subdomain
+    nginx: where to save nginx configurations
+    httpd: where to save apache configurations (experimental)
+    protocol: http or https
+    """
     config: Dict[str, Optional[Union[str, bool, dict]]] = {
         "version": __version__,
         "destination": str(destination.absolute()),
@@ -131,6 +157,7 @@ def create(
         "protocol": protocol,
         "domain": domain,
         "prefix": prefix,
+        "local": local,
         "language": language,
         "robots": {
             "default": robots,
@@ -203,6 +230,19 @@ def add_user(
     nginx: Optional[Path] = None,
     httpd: Optional[Path] = None,
 ):
+    """
+    Add a new user to the site (or change the public status of an
+    existing user).
+
+    rerunning will not erase or overwrite any existing template or
+    static files
+
+    directory: the directory containing the config file
+    name: the name of the user
+    public: whether the user should be included in the public index
+    nginx: where to save nginx configurations
+    httpd: where to save apache configurations (experimental)
+    """
     check_name(name)
 
     path = directory / FILENAME
@@ -248,6 +288,23 @@ def rename_user(
     nginx: Optional[Path] = None,
     httpd: Optional[Path] = None,
 ):
+    """
+    Rename an existing user.
+
+    This will not update any links to the user on existing pages, and
+    will not overwrite any existing static folder with a matching name.
+
+    This operation will safely fail if the new name is already taken or
+    is otherwise invalid.
+
+    The site will not be updated until it is rerendered
+
+    directory: the directory containing the config file
+    old_name: the current name of the user
+    new_name: the current name of the user
+    nginx: where to save nginx configurations
+    httpd: where to save apache configurations (experimental)
+    """
     check_name(new_name)
 
     path = directory / FILENAME
@@ -302,6 +359,17 @@ def delete_user(
     nginx: Optional[Path] = None,
     httpd: Optional[Path] = None,
 ):
+    """
+    Delete an existing user.
+
+    The site will not be updated until it is rerendered
+
+    directory: the directory containing the config file
+    name: the user to delete
+    delete_files: Delete the users template and static files as well
+    nginx: where to save nginx configurations
+    httpd: where to save apache configurations (experimental)
+    """
     path = directory / FILENAME
 
     with path.open("r") as stream:
@@ -338,6 +406,13 @@ def delete_user(
 
 
 def grab_users(directory: Path, name: str, domain: str):
+    """
+    Grab/Update a user list for another site
+
+    directory: the directory containing the config file
+    name: how to refer to the other site
+    domain: the domain for the other site
+    """
     path = directory / FILENAME
 
     with path.open("r") as stream:
@@ -352,6 +427,12 @@ def grab_users(directory: Path, name: str, domain: str):
 
 
 def forget_users(directory: Path, name: str):
+    """
+    Delete a user list for another site
+
+    directory: the directory containing the config file
+    name: the name of the site to forget
+    """
     path = directory / FILENAME
 
     with path.open("r") as stream:
@@ -413,6 +494,7 @@ def _write_nginx(directory: Path, config: Dict[str, Any], certbot: bool = True):
                 domain=domain,
                 url_path=url_path,
                 prefix=prefix,
+                local=config.get("local", False),
                 users=users,
                 path=config["destination"],
                 url_safe_name=url_safe_name,
@@ -464,6 +546,7 @@ def _write_httpd(path: Path, config: Dict[str, Any], certbot: bool = True):
                 domain=domain,
                 url_path=url_path,
                 prefix=prefix,
+                local=config.get("local", False),
                 users=users,
                 path=config["destination"],
                 url_safe_name=url_safe_name,

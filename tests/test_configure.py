@@ -150,8 +150,8 @@ def test_add_user(tmp_path: Path):
                 match = re.search(
                     (
                         r"^\s*server_name "
-                        r"(user\d?)\.example\.com "
-                        r"www\.(\1)\.example\.com;\s*$"
+                        r"www\.(user\d?)\.example\.com "
+                        r"(\1)\.example\.com;\s*$"
                     ),
                     line,
                 )
@@ -166,6 +166,50 @@ def test_add_user(tmp_path: Path):
 
     assert users == set()
 
+    # no www
+    with config.open() as stream:
+        data = json.load(stream)
+    data["local"] = True
+    with config.open("w") as stream:
+        json.dump(data, stream)
+
+    add_user(tmp_path, "user3", nginx=tmp_path)
+    assert (tmp_path / "example.com").is_file()
+    sections = (tmp_path / "example.com").read_text().split("server {")
+    assert len(sections) == 5  # "", index, user 1–3
+    assert not sections[0].strip()
+    name_found = root_found = False
+    for line in sections[1].splitlines():
+        line = line.strip()
+        if line.startswith("server_name "):
+            assert line == "server_name example.com;"
+            name_found = True
+        elif line.startswith("root "):
+            assert line == f"root {tmp_path};"
+            root_found = True
+    assert name_found
+    assert root_found
+
+    users = {"user", "user2", "user3"}
+    for section in sections[2:]:
+        user = None
+        root_found = False
+
+        for line in section.splitlines():
+            if "server_name" in line:
+                match = re.search(
+                    (r"^\s*server_name (user\d?)\.example\.com;\s*$"),
+                    line,
+                )
+                user = match.group(1)
+                users.remove(user)
+            elif "root " in line:
+                assert user
+                assert line.strip() == f"root {tmp_path}/{user}/;"
+                root_found = True
+
+        assert root_found
+
     # nginx with prefix (also test symlinking)
     nginx = tmp_path / "sites-available"
     nginx.mkdir()
@@ -175,6 +219,7 @@ def test_add_user(tmp_path: Path):
     with config.open() as stream:
         data = json.load(stream)
     data["prefix"] = "m"
+    data["local"] = False
     with config.open("w") as stream:
         json.dump(data, stream)
     add_user(tmp_path, "user3", nginx=nginx)
