@@ -169,10 +169,9 @@ def render(
                                     if match:
                                         number = int(match.group(1))
 
-                                    image_number = info.number
-                                    if image_number is None or number > image_number:
-                                        info.number = number
-                                        info.kwargs["latest_image"] = path.name
+                                        if info.number is None or number > info.number:
+                                            info.number = number
+                                            info.kwargs["latest_image"] = path.name
 
                 modified_time = int(info.template.stat().st_mtime)
                 last_modified = info.last.get(info.template)
