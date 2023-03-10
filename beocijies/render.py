@@ -4,247 +4,200 @@ Render the beocijies sites
 import json
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
-from multiprocessing import Pool, get_logger
+from enum import Enum
 from pathlib import Path
-from shutil import copy2, copytree
-from subprocess import check_call
+from shutil import copy2, rmtree
 from time import sleep
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, Optional, Sequence, Union
 
 from jinja2 import Environment, FileSystemLoader
 
 from beocijies.configure import FILENAME
 
+LOGGER = logging.getLogger("beocijies")
+
+
+class LinkType(Enum):
+    ABSOLUTE = "absolute"
+    RELATIVE = "relative"
+
+
+@dataclass
+class PageInfo:
+    template: Path
+    kwargs: Dict[str, Any]
+    number: Optional[int] = None
+    last: Dict[Path, int] = field(default_factory=dict)
+
 
 def render(
     directory: Path,
-    users: Optional[List[str]] = None,
+    *,
+    users: Optional[Sequence[str]] = None,
+    destination: Optional[Union[bool, Path]] = None,
+    link_type: Optional[LinkType] = None,
     live: bool = False,
-    absolute: bool = False,
+    fresh: bool = False,
 ):
     with (directory / FILENAME).open("r") as stream:
         config = json.load(stream)
 
-    if users is None:
-        users = list(config["users"])
+    if destination is True:
+        destination = Path(config["destination"])
+    elif not destination:
+        destination = Path(config.get("test-destination", config["destination"]))
 
-    destination = Path(config["destination"])
+    if link_type is None:
+        if config["subdomains"]:
+            link_type = LinkType.ABSOLUTE
+        else:
+            link_type = LinkType.RELATIVE
+
+    if not users:
+        users = ["index", *config["users"]]
+    elif fresh:
+        raise ValueError("Users cannot be supplied if fresh is true")
 
     environment = Environment(loader=FileSystemLoader((directory / "templates")))
     templates = directory / "templates"
     static = directory / "static"
+    domain = config["domain"]
 
-    mobile_environment = mobile_templates = mobile_static = None
+    prefix = config.get("prefix") or "www"
+    if link_type == LinkType.ABSOLUTE:
+        link_format = index_link_format = f"//{prefix}.{domain}/{{}}"
+    else:
+        link_format = "../{}/index.html"
+        index_link_format = "./{}/index.html"
 
+    neighbours = config["neighbours"]
+    public_users = {user for user, info in config["users"].items() if info["public"]}
+    language = config.get("language")
+    site_name = config["name"]
+
+    def get_user(user: str) -> Callable[[str, Optional[str]], str]:
+        def link_user(name: str, site: Optional[str] = None) -> str:
+            text = name
+
+            if site:
+                text = f"{name} ({site})"
+                if site in neighbours:
+                    if name in neighbours[site]:
+                        text = f"<a href={neighbours[site][name]}>{text}</a>"
+            elif name in public_users:
+                if user == "index":
+                    format_string = index_link_format
+                else:
+                    format_string = link_format
+
+                text = f"<a href={format_string.format(name)}>{name}</a>"
+
+            return text
+
+        return link_user
+
+    if fresh and destination.exists():
+        LOGGER.info("deleting existing rendered site")
+        rmtree(destination)
+    destination.mkdir(exist_ok=True, parents=True)
+
+    # copy any files in the base
     for path in static.iterdir():
         if path.is_file():
             copy2(path, destination)
 
-    if config.get("mobile"):
-        mobile_directory = Path(config["mobile"])
-        if mobile_directory.exists():  # drive plugged in
-            mobile_environment = Environment(
-                loader=FileSystemLoader((mobile_directory / "templates"))
-            )
-            mobile_templates = mobile_directory / "templates"
-            mobile_static = mobile_directory / "static"
+    protocol = config["protocol"]
+    with (destination / "users.json").open("w") as stream:
+        json.dump(
+            {user: f"{protocol}://{prefix}.{domain}/{user}" for user in public_users},
+            stream,
+            indent=4,
+            sort_keys=True,
+        )
 
-            (destination / "mobile").mkdir(exist_ok=True)
-            fake_desktop = destination / "mobile" / "desktop"
-            if not (absolute or fake_desktop.is_symlink()):
-                check_call(("ln", "-s", str(destination), str(fake_desktop)))
-
-            for path in mobile_static.iterdir():
-                if path.is_file():
-                    copy2(path, destination / "mobile")
-
-    public_users = []
-    mobile_public_users = []
-    to_update = []
-    for user, info in config["users"].items():
-        if info["public"]:
-            if info["desktop"]:
-                public_users.append(user)
-
-            if info["mobile"]:
-                mobile_public_users.append(user)
-
-        if user in users:
-            if info["desktop"]:
-                to_update.append(
-                    (
-                        user,
-                        environment,
-                        templates / f"{user}.html.jinja2",
-                        static / user,
-                        destination if user == "index" else destination / user,
-                        public_users,
-                        mobile_public_users,
-                        config["language"],
-                        config["domain"],
-                        config["name"],
-                        "desktop",
-                        live,
-                        absolute,
-                    )
-                )
-
-            if (
-                info["mobile"]
-                and mobile_environment
-                and mobile_templates
-                and mobile_static
-            ):
-                to_update.append(
-                    (
-                        user,
-                        mobile_environment,
-                        mobile_templates / f"{user}.html.jinja2",
-                        mobile_static / user,
-                        (
-                            destination / "mobile"
-                            if user == "index"
-                            else destination / "mobile" / user
-                        ),
-                        public_users,
-                        mobile_public_users,
-                        config["language"],
-                        config["domain"],
-                        config["name"],
-                        "mobile",
-                        live,
-                        absolute,
-                    )
-                )
-
-    with Pool(len(to_update)) as pool:
-        pool.starmap(watch_site, to_update)
-
-
-def watch_site(
-    user: str,
-    environment: Environment,
-    template_file: Path,
-    static: Path,
-    destination: Path,
-    users: List[str],
-    mobile_users: List[str],
-    language: Optional[str],
-    site_url: str,
-    site_name: str,
-    site_type: str,
-    live: bool = False,
-    absolute: bool = False,
-):
-    logger = get_logger()
-    logger.addHandler(logging.StreamHandler())
-    logger.setLevel(logging.INFO)
-
-    page_date = "Never"
-    latest_image = None
-    image_number = 0
-    modified_times: Dict[Path, int] = {}
-
-    destination.mkdir(exist_ok=True)
-
-    if absolute:
-        desktop_path = f"//{site_url}/{{}}/index.html"
-        mobile_path = f"//m.{site_url}/{{}}/index.html"
-
-        if site_type == "desktop":
-            local_users = users
-
-            paths = {name: desktop_path.format(name) for name in users}
-            for name in mobile_users:
-                paths.setdefault(name, mobile_path.format(name))
-        else:
-            paths = {name: mobile_path.format(name) for name in mobile_users}
-            for name in users:
-                paths.setdefault(name, desktop_path.format(name))
-
-            local_users = mobile_users
-    else:
-        dots = "." if user == "index" else ".."
-        if site_type == "desktop":
-            desktop_path = f"{dots}/{{}}/index.html"
-            mobile_path = f"{dots}/mobile/{{}}/index.html"
-
-            paths = {name: desktop_path.format(name) for name in users}
-            for name in mobile_users:
-                paths.setdefault(name, mobile_path.format(name))
-
-            local_users = users
-        else:
-            desktop_path = f"{dots}/desktop/{{}}/index.html"
-            mobile_path = f"{dots}/{{}}/index.html"
-
-            paths = {name: mobile_path.format(name) for name in mobile_users}
-            for name in users:
-                paths.setdefault(name, desktop_path.format(name))
-
-            local_users = mobile_users
-
-    def get_user(name: str) -> str:
-        if name in paths:
-            return f'<a href="{paths[name]}">{name}</a>'
-
-        return name
+    print(users)
+    pages = {
+        user: PageInfo(
+            templates / f"{user}.html.jinja2",
+            {
+                "me": user,
+                "language": language,
+                "site_url": domain,
+                "site_name": site_name,
+                "user": get_user(user),
+                "users": public_users,
+            },
+        )
+        for user in users
+    }
 
     loop = True
     while loop:
-        changed = False
+        try:
+            for user, info in pages.items():
+                changed = False
 
-        for path in (*static.iterdir(), template_file):
-            if path.name.lower() == ".ds_store":
-                continue
+                if user == "index":
+                    user_destination = destination
+                else:
+                    user_destination = destination / user
 
-            modified_time = int(path.stat().st_mtime)
-            if path not in modified_times or modified_times[path] < modified_time:
-                changed = True
-                modified_times[path] = modified_time
+                user_static = static / user
+                directories = [user_static]
+                while directories:
+                    directory = directories.pop(0)
+                    dest = user_destination / directory.relative_to(user_static)
+                    dest.mkdir(exist_ok=True, parents=True)
+                    for path in directory.iterdir():
+                        if path.is_dir():
+                            directories.append(path)
+                        elif path.name.lower() != ".ds_store":  # thanks apple
+                            modified_time = int(path.stat().st_mtime)
+                            last_modified = info.last.get(path)
+                            if last_modified is None or modified_time != last_modified:
+                                info.last[path] = modified_time
+                                changed = True
+                                LOGGER.info("copying %s", path)
+                                copy2(
+                                    path,
+                                    user_destination / path.relative_to(user_static),
+                                )
 
-                if path != template_file:
-                    logger.info("copying %s", path)
-                    if path.is_dir():
-                        copytree(path, destination)
-                    else:
-                        copy2(path, destination)
+                                if directory == user_static:
+                                    match = re.search(r"^update-(\d+)$", path.stem)
+                                    if match:
+                                        number = int(match.group(1))
 
-                match = re.search(r"^update-(\d+)$", path.stem)
-                if match:
-                    number = int(match.group(1))
+                                    image_number = info.number
+                                    if image_number is None or number > image_number:
+                                        info.number = number
+                                        info.kwargs["latest_image"] = path.name
 
-                    if latest_image is None or number > image_number:
-                        image_number = number
-                        latest_image = path.name
+                modified_time = int(info.template.stat().st_mtime)
+                last_modified = info.last.get(info.template)
+                if last_modified is None or modified_time != last_modified:
+                    info.last[info.template] = modified_time
+                    info.kwargs["page_date"] = datetime.fromtimestamp(
+                        modified_time
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+                    changed = True
 
-            if path == template_file:
-                page_date = datetime.fromtimestamp(modified_time).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
+                if changed:
+                    template = environment.get_template(info.template.name)
 
-        if changed:
-            template = environment.get_template(template_file.name)
+                    try:
+                        LOGGER.info("rendering page for %s", user)
+                        with (user_destination / "index.html").open("w") as stream:
+                            stream.write(template.render(**info.kwargs))
+                    except Exception:
+                        LOGGER.exception("updating page for %s failed", user)
 
-            try:
-                logger.info("rendering page for %s", user)
-                with (destination / "index.html").open("w") as stream:
-                    stream.write(
-                        template.render(
-                            me=user,
-                            language=language,
-                            site_url=site_url,
-                            site_name=site_name,
-                            latest_image=latest_image,
-                            page_date=page_date,
-                            user=get_user,
-                            users=local_users,
-                        )
-                    )
-            except Exception:
-                logger.exception("updating page for %s failed", user)
+            loop = live
+            if loop:
+                sleep(2)
 
-        loop = live
-        if loop:
-            sleep(2)
+        except KeyboardInterrupt:
+            LOGGER.info("stopping")
+            loop = False

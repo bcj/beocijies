@@ -7,7 +7,7 @@ def test_valid_version():
     assert re.search(r"^\d+\.\d+\.\d+(-(rc\d+|dev))?$", __version__)
 
 
-def test_imports():
+def test_version_import():
     import beocijies.version
     from beocijies import __version__
 

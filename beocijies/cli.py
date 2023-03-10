@@ -3,13 +3,19 @@ Run beocijies from the command line
 """
 import logging
 from argparse import ArgumentParser
+from os import environ
 from pathlib import Path
 from typing import List, Optional
 
-from beocijies.configure import add_user, create, mobile_import
-from beocijies.render import render
-
-NGINX_DIRECTORY = Path("/opt/homebrew/etc/nginx/servers")
+from beocijies.configure import (
+    add_user,
+    create,
+    delete_user,
+    forget_users,
+    grab_users,
+    rename_user,
+)
+from beocijies.render import LinkType, render
 
 
 def main(input_args: Optional[List[str]] = None):
@@ -44,19 +50,28 @@ def main(input_args: Optional[List[str]] = None):
         help="Where to build the beocijies website",
     )
     create_parser.add_argument(
-        "--mobile",
+        "--test-destination",
         type=Path,
-        help="Where to save the mobile configurations",
+        help="A location to build the site for non-live edits",
     )
-    create_parser.add_argument("--name", required=True, help="The name of the site")
     create_parser.add_argument(
-        "--domain", default="localhost", help="The name of the site"
+        "--name", default="beocijies", help="The name of the site"
+    )
+    create_parser.add_argument("--domain", help="The domain of the site")
+    prefix_group = create_parser.add_mutually_exclusive_group()
+    prefix_group.add_argument("--prefix", help="A prefix to add to all domains")
+    prefix_group.add_argument(
+        "--mobile",
+        dest="prefix",
+        action="store_const",
+        const="m",
+        help="Only make the site available at m.DOMAIN",
     )
     create_parser.add_argument("--language", help="The language the site is in")
     create_parser.add_argument(
         "--subdomains",
         action="store_true",
-        help="Give users their own subdomains (user.domain/m.user.domain)",
+        help="Give users their own subdomains (user.yoursite.com)",
     )
     create_parser.add_argument("--robots", action="store_true", help="Allow scraping")
     create_parser.add_argument("--agents", nargs="+", help="Any user agents to allow")
@@ -68,7 +83,21 @@ def main(input_args: Optional[List[str]] = None):
         nargs="?",
         default=False,
         type=Path,
-        help="Generate an nginx file in this location",
+        help="Generate an NGINX file in this directory",
+    )
+    create_parser.add_argument(
+        "--httpd",
+        "--apache",
+        type=Path,
+        help="Where to generate the virtual hosts file",
+    )
+    create_parser.set_defaults(protocol="https")
+    create_parser.add_argument(
+        "--http",
+        dest="protocol",
+        action="store_const",
+        const="http",
+        help="Serve the website over http, not https",
     )
 
     add_parser = subparsers.add_parser("add", help="Add a beocijies user")
@@ -82,26 +111,89 @@ def main(input_args: Optional[List[str]] = None):
     add_parser.add_argument(
         "--public", action="store_true", help="List the user in the index"
     )
-    add_parser.set_defaults(mobile=True, desktop=True)
-    env_parser = add_parser.add_mutually_exclusive_group()
-    env_parser.add_argument(
-        "--desktop",
-        dest="mobile",
-        action="store_false",
-        help="Only create a desktop page for the user",
-    )
-    env_parser.add_argument(
-        "--mobile",
-        dest="desktop",
-        action="store_false",
-        help="Only create a desktop page for the user",
-    )
     add_parser.add_argument(
         "--nginx",
         nargs="?",
         default=False,
         type=Path,
-        help="Generate an nginx file in this location",
+        help="Generate an NGINX file in this directory",
+    )
+    add_parser.add_argument(
+        "--httpd",
+        "--apache",
+        type=Path,
+        help="Where to generate the virtual hosts file",
+    )
+
+    rename_parser = subparsers.add_parser("rename", help="Rename a beocijies user")
+    rename_parser.add_argument("old", help="The old name of the user")
+    rename_parser.add_argument("new", help="The new name of the user")
+    rename_parser.add_argument(
+        "--directory",
+        type=Path,
+        default=Path.cwd(),
+        help="The beocijies configuration directory",
+    )
+    rename_parser.add_argument(
+        "--nginx",
+        nargs="?",
+        default=False,
+        type=Path,
+        help="Generate an NGINX file in this directory",
+    )
+    rename_parser.add_argument(
+        "--httpd",
+        "--apache",
+        type=Path,
+        help="Where to generate the virtual hosts file",
+    )
+
+    delete_parser = subparsers.add_parser("remove", help="Remove a beocijies user")
+    delete_parser.add_argument("name", help="The name of the user")
+    delete_parser.add_argument(
+        "--delete", action="store_true", help="Delete files associated with the user"
+    )
+    delete_parser.add_argument(
+        "--directory",
+        type=Path,
+        default=Path.cwd(),
+        help="The beocijies configuration directory",
+    )
+    delete_parser.add_argument(
+        "--nginx",
+        nargs="?",
+        default=False,
+        type=Path,
+        help="Generate an NGINX file in this directory",
+    )
+    delete_parser.add_argument(
+        "--httpd",
+        "--apache",
+        type=Path,
+        help="Where to generate the virtual hosts file",
+    )
+
+    connect_parser = subparsers.add_parser(
+        "connect", help="Grab/Update another server's user list"
+    )
+    connect_parser.add_argument("name", help="The name of the server")
+    connect_parser.add_argument("domain", help="The domain of the server")
+    connect_parser.add_argument(
+        "--directory",
+        type=Path,
+        default=Path.cwd(),
+        help="The beocijies configuration directory",
+    )
+
+    disconnect_parser = subparsers.add_parser(
+        "disconnect", help="Forget another server's user list"
+    )
+    disconnect_parser.add_argument("name", help="The name of the server")
+    disconnect_parser.add_argument(
+        "--directory",
+        type=Path,
+        default=Path.cwd(),
+        help="The beocijies configuration directory",
     )
 
     render_parser = subparsers.add_parser("render", help="Render beocijies sites")
@@ -112,23 +204,40 @@ def main(input_args: Optional[List[str]] = None):
         help="The beocijies configuration directory",
     )
     render_parser.add_argument(
-        "--users", nargs="+", help="Users to render the site for"
+        "users",
+        nargs="*",
+        help="Users to render the site for (use index for the main page)",
     )
     render_parser.add_argument(
         "--live", action="store_true", help="Watch for further changes"
     )
-    render_parser.add_argument(
-        "--absolute", action="store_true", help="Use absolute links"
+    destination_group = render_parser.add_mutually_exclusive_group()
+    destination_group.add_argument(
+        "--production",
+        action="store_true",
+        help="Render to destination not test-destination",
+    )
+    destination_group.add_argument(
+        "--destination", type=Path, help="Render to this location"
     )
 
-    mobile_parser = subparsers.add_parser(
-        "mobile-sync", help="Pull in new mobile users"
+    link_group = render_parser.add_mutually_exclusive_group()
+    link_group.add_argument(
+        "--relative",
+        dest="link_type",
+        action="store_const",
+        const=LinkType.RELATIVE,
+        help="Render users with relative links",
     )
-    mobile_parser.add_argument(
-        "--directory",
-        type=Path,
-        default=Path.cwd(),
-        help="The beocijies configuration directory",
+    link_group.add_argument(
+        "--absolute",
+        dest="link_type",
+        action="store_const",
+        const=LinkType.ABSOLUTE,
+        help="Render users with absolute links",
+    )
+    render_parser.add_argument(
+        "--fresh", action="store_true", help="delete existing files"
     )
 
     args = parser.parse_args()
@@ -137,39 +246,105 @@ def main(input_args: Optional[List[str]] = None):
     logger.setLevel(level=args.log_level)
     logger.addHandler(logging.StreamHandler())
 
-    if args.command in ("create", "add"):
+    if args.command in ("create", "add", "rename", "remove"):
         if not args.nginx and args.nginx is not False:
-            args.nginx = NGINX_DIRECTORY
+            args.nginx = find_nginx_directory()
+        if args.httpd and args.httpd.is_dir():
+            args.httpd = args.httpd / "httpd-vhosts.conf"
 
     if args.command == "create":
+        if args.domain is None:
+            args.domain = environ.get("HOST", "localhost")
+
         create(
             args.directory,
             args.destination,
             args.name,
-            mobile=args.mobile,
+            test_destination=args.test_destination,
             domain=args.domain,
+            prefix=args.prefix,
             language=args.language,
             allowed_agents=args.agents,
             disallowed_agents=args.bad_agents,
             robots=args.robots,
             subdomains=args.subdomains,
             nginx=args.nginx,
+            httpd=args.httpd,
+            protocol=args.protocol,
         )
     elif args.command == "add":
         add_user(
             args.directory,
             args.name,
             public=args.public,
-            desktop=args.desktop,
-            mobile=args.mobile,
             nginx=args.nginx,
+            httpd=args.httpd,
         )
+    elif args.command == "rename":
+        rename_user(
+            args.directory, args.old, args.new, nginx=args.nginx, httpd=args.httpd
+        )
+    elif args.command == "remove":
+        delete_user(
+            args.directory,
+            args.name,
+            delete_files=args.delete,
+            nginx=args.nginx,
+            httpd=args.httpd,
+        )
+    elif args.command == "connect":
+        grab_users(args.directory, args.name, args.domain)
+    elif args.command == "disconnect":
+        forget_users(args.directory, args.name)
     elif args.command == "render":
-        render(args.directory, users=args.users, live=args.live, absolute=args.absolute)
-    elif args.command == "mobile-sync":
-        mobile_import(args.directory)
+        render(
+            args.directory,
+            destination=args.destination or args.production,
+            users=args.users,
+            live=args.live,
+            fresh=args.fresh,
+            link_type=args.link_type,
+        )
     else:
         raise NotImplementedError(f"Haven't added support for command {args.command!r}")
+
+
+def find_nginx_directory() -> Path:
+    paths = []
+
+    # sorry, I own a mac. I'm going to try mac stuff first
+    if "HOMEBREW_PREFIX" in environ:
+        paths.append(Path(environ["HOMEBREW_PREFIX"]) / "etc/nginx/")
+
+    # where else might nginx store its config?
+    # https://docs.nginx.com/nginx/admin-guide/basic-functionality/managing-configuration-files/
+    paths.extend(
+        (
+            Path("/etc/nginx/"),
+            Path("/usr/local/nginx/"),
+            Path("/usr/local/nginx/conf/"),
+            Path("/usr/local/etc/nginx/"),
+        )
+    )
+
+    logging.debug("looking for NGINX directory")
+    for path in paths:
+        # nginx might want your server config in servers or it might
+        # want you to put it in a 'sites-available' directory and then
+        # symlinked in 'sites-enabled'.
+        for name in ("servers", "sites-available"):
+            directory = path / name
+
+            logging.debug("checking %s", directory)
+            if directory.exists():
+                return directory
+
+    raise ValueError(
+        "Could not find NGINX servers directory. "
+        "(tried looking for 'servers' and 'sites-available' in: {})".format(
+            ", ".join(map(str, paths))
+        )
+    )
 
 
 if __name__ == "__main__":
