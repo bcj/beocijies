@@ -117,7 +117,6 @@ def render(
             sort_keys=True,
         )
 
-    print(users)
     pages = {
         user: PageInfo(
             templates / f"{user}.html.jinja2",
