@@ -287,7 +287,7 @@ You can link to all the users with the following code:
 <details open=true>
     <summary>users:</summary>
     <ul>
-    {% for name in users %}
+    {% for name in users | sort %}
         <li>{{user(name)}}</li>
     {% endfor %}
     </ul>
