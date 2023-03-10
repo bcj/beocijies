@@ -179,7 +179,7 @@ def test_add_user(tmp_path: Path):
         json.dump(data, stream)
     add_user(tmp_path, "user3", nginx=nginx)
 
-    sections = (nginx / "example.com").read_text().split("server {")
+    sections = (nginx / "m.example.com").read_text().split("server {")
     assert len(sections) == 5  # "", index, user 1–3
     assert not sections[0].strip()
     name_found = location_found = root_found = False
@@ -233,7 +233,7 @@ def test_add_user(tmp_path: Path):
         json.dump(data, stream)
     add_user(tmp_path, "user3", nginx=tmp_path)
 
-    sections = (tmp_path / "example.com").read_text().split("server {")
+    sections = (tmp_path / "m.example.com").read_text().split("server {")
     assert len(sections) == 2  # "", index
     assert not sections[0].strip()
     name_found = location_found = root_found = False

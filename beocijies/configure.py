@@ -403,7 +403,10 @@ def _write_nginx(directory: Path, config: Dict[str, Any], certbot: bool = True):
     users = config["users"] if config["subdomains"] else {}
 
     nginx_template = Template(NGINX_TEMPLATE)
-    nginx_file = directory / domain
+    if prefix:
+        nginx_file = directory / f"{prefix}.{domain}"
+    else:
+        nginx_file = directory / domain
     with nginx_file.open("w") as stream:
         stream.write(
             nginx_template.render(
