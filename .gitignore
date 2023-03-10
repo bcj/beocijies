@@ -2,3 +2,4 @@
 beocijies.egg-info/
 build/
 dist/
+.tox/
