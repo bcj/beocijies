@@ -1,6 +1,7 @@
 """
 Configure the website
 """
+
 import json
 import logging
 import re
@@ -169,11 +170,12 @@ def create(
         "neighbours": {},
     }
 
-    if test_destination:
-        config["test-destination"] = str(test_destination.absolute())
-
     directory.mkdir(parents=True, exist_ok=True)
     destination.mkdir(parents=True, exist_ok=True)
+
+    if test_destination:
+        config["test-destination"] = str(test_destination.absolute())
+        test_destination.mkdir(parents=True, exist_ok=True)
 
     existing_users = {}
     config_file = directory / FILENAME
@@ -269,6 +271,8 @@ def add_user(
     if not template.exists():
         LOGGER.debug("Creating template %s", template)
         copy2(templates / "#default.html.jinja2", template)
+        # The page was last updated now, not default template edit time
+        template.touch(exist_ok=True)
 
     LOGGER.debug("Creating static directory")
     (directory / "static" / name).mkdir(exist_ok=True)

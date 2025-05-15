@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beocijies"
-version = "0.9.0"
+version = "0.10.0-dev"
 authors = [
   { name="bcj", email="bcj@beocijies.com" },
 ]
@@ -22,6 +22,8 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: Site Management",
@@ -29,6 +31,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "notify-py",
     "jinja2",
     "requests",
 ]

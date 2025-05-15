@@ -1,6 +1,7 @@
 """
 Render the beocijies sites
 """
+
 import json
 import logging
 import re
@@ -13,6 +14,7 @@ from time import sleep
 from typing import Any, Callable, Dict, Optional, Sequence, Union
 
 from jinja2 import Environment, FileSystemLoader
+from notifypy import Notify  # type: ignore
 
 from beocijies.configure import FILENAME
 
@@ -39,6 +41,7 @@ def render(
     destination: Optional[Union[bool, Path]] = None,
     link_type: Optional[LinkType] = None,
     live: bool = False,
+    notify: bool = False,
     fresh: bool = False,
 ):
     """
@@ -53,6 +56,7 @@ def render(
     link_type: Either relative or absolute, or None to default based on
         whether the site uses subdomains
     live: Watch for new changes and continue to update as they appear.
+    notify: Send a desktop notification if rendering fails
     fresh: Delete existing files before rendering. If supplied, a user
         list cannot be supplied
     """
@@ -154,6 +158,9 @@ def render(
         for user in users
     }
 
+    failing_users = set()
+    updated = set()
+
     loop = True
     while loop:
         try:
@@ -214,6 +221,19 @@ def render(
                     except Exception:
                         LOGGER.exception("updating page for %s failed", user)
 
+                        if user not in failing_users and notify:
+                            failing_users.add(user)
+                            send_notification(f"Building page for {user} failed")
+
+                        if not live:
+                            raise
+                    else:
+                        if user in failing_users and notify:
+                            failing_users.remove(user)
+                            send_notification(f"Page for {user} fixed")
+
+                    updated.add(user)
+
             loop = live
             if loop:
                 sleep(2)
@@ -221,3 +241,13 @@ def render(
         except KeyboardInterrupt:
             LOGGER.info("stopping")
             loop = False
+
+    LOGGER.info(f"updated pages for {', '.join(sorted(updated))}")
+
+
+def send_notification(message):
+    notification = Notify()
+    notification.title = "beocijies"
+    notification.message = message
+
+    notification.send()
