@@ -227,7 +227,7 @@ def main(input_args: Optional[List[str]] = None):
         help="Send a desktop notification if rendering fails",
     )
     notify_group.add_argument(
-        "--silent",
+        "--no-notify",
         dest="notify",
         action="store_false",
         help="Don't send a desktop notification if rendering fails",
@@ -337,7 +337,7 @@ def main(input_args: Optional[List[str]] = None):
         render(
             args.directory,
             destination=args.destination or args.production,
-            users=args.users,
+            users=set(args.users),
             live=args.live,
             notify=args.notify,
             fresh=args.fresh,

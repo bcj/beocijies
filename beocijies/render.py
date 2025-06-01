@@ -11,14 +11,28 @@ from enum import Enum
 from pathlib import Path
 from shutil import copy2, rmtree
 from time import sleep
-from typing import Any, Callable, Dict, Optional, Sequence, Union
+from typing import Any, Callable, Iterable, Optional, Union
+from xml.etree import ElementTree
 
+from bs4 import BeautifulSoup
 from jinja2 import Environment, FileSystemLoader
 from notifypy import Notify  # type: ignore
 
-from beocijies.configure import FILENAME
+from beocijies.configure import FILENAME, UPDATES_FILENAME, Feed
+
+# reminder to self: you can do this from 3.11+
+try:
+    from datetime import UTC  # type: ignore
+except ImportError:
+    from datetime import timedelta, timezone
+
+    UTC = timezone(timedelta(0))
 
 LOGGER = logging.getLogger("beocijies")
+
+POST_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+ATOM_DATE_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+RSS_DATE_FORMAT = "%a, %d %b %Y %H:%M:%S %z"
 
 
 class LinkType(Enum):
@@ -29,15 +43,16 @@ class LinkType(Enum):
 @dataclass
 class PageInfo:
     template: Path
-    kwargs: Dict[str, Any]
+    kwargs: dict[str, Any]
     number: Optional[int] = None
-    last: Dict[Path, int] = field(default_factory=dict)
+    last: dict[Path, int] = field(default_factory=dict)
 
 
+# reminder to self: Union -> | as of min 3.10
 def render(
     directory: Path,
     *,
-    users: Optional[Sequence[str]] = None,
+    users: Optional[set[str]] = None,
     destination: Optional[Union[bool, Path]] = None,
     link_type: Optional[LinkType] = None,
     live: bool = False,
@@ -75,7 +90,7 @@ def render(
             link_type = LinkType.RELATIVE
 
     if not users:
-        users = ["index", *config["users"]]
+        users = set({"index", *config["users"]})
     elif fresh:
         raise ValueError("Users cannot be supplied if fresh is true")
 
@@ -99,7 +114,9 @@ def render(
         index_link_format = "./{}/index.html"
 
     neighbours = config["neighbours"]
-    public_users = {user for user, info in config["users"].items() if info["public"]}
+    public_users = {
+        user for user, info in config["users"].items() if info.get("public", False)
+    }
     language = config.get("language")
     site_name = config["name"]
 
@@ -153,6 +170,8 @@ def render(
                 "user": get_user(user),
                 "users": public_users,
                 "neighbours": neighbours,
+                "has_feed": Feed.NONE
+                != Feed(config["users"].get(user, {}).get("feed", "personal")),
             },
         )
         for user in users
@@ -175,10 +194,10 @@ def render(
                 user_static = static / user
                 directories = [user_static]
                 while directories:
-                    directory = directories.pop(0)
-                    dest = user_destination / directory.relative_to(user_static)
+                    current_directory = directories.pop(0)
+                    dest = user_destination / current_directory.relative_to(user_static)
                     dest.mkdir(exist_ok=True, parents=True)
-                    for path in directory.iterdir():
+                    for path in current_directory.iterdir():
                         if path.is_dir():
                             directories.append(path)
                         elif path.name.lower() != ".ds_store":  # thanks apple
@@ -193,7 +212,7 @@ def render(
                                     user_destination / path.relative_to(user_static),
                                 )
 
-                                if directory == user_static:
+                                if current_directory == user_static:
                                     match = re.search(r"^update-(\d+)$", path.stem)
                                     if match:
                                         number = int(match.group(1))
@@ -243,6 +262,318 @@ def render(
             loop = False
 
     LOGGER.info(f"updated pages for {', '.join(sorted(updated))}")
+
+    global_feed = Feed(config["users"].get("index", {}).get("feed", "personal"))
+    if global_feed != Feed.NONE and updated:
+        updates_file = directory / UPDATES_FILENAME
+
+        if updates_file.exists():
+            with updates_file.open("r") as stream:
+                updates = json.load(stream)
+        else:
+            updates = {}
+
+        for user in updated:
+            user_feed = Feed(config["users"].get(user, {}).get("feed", "personal"))
+
+            if user == "index":
+                listed_user = None
+                user_page = destination / "index.html"
+                user_root = f"{protocol}://{prefix}{domain}"
+            else:
+                listed_user = user
+                user_page = destination / user / "index.html"
+                user_root = f"{protocol}://{prefix}{domain}/{user}"
+
+            updates[user] = parse_entries(
+                user_page, user_root, static / user, site_name, user=listed_user
+            )
+
+        with updates_file.open("w") as stream:
+            json.dump(updates, stream, indent=4, sort_keys=True)
+
+        for user in users:
+            user_feed = Feed(config["users"].get(user, {}).get("feed", "personal"))
+            if user_feed != Feed.NONE:
+                root_url = f"{protocol}://{prefix}{domain}/{user}/"
+
+                user_entries = updates.get(user, {})
+
+                LOGGER.info("rendering feed for %s", user)
+                posts = sort_posts(user_entries.values())
+                build_atom(posts, destination, site_name, root_url, user=user)
+                build_rss(posts, destination, site_name, root_url, user=user)
+
+        if global_feed != Feed.NONE:
+            root_url = f"{protocol}://{prefix}{domain}/"
+
+            LOGGER.info("rendering global feed")
+            posts = sort_posts(
+                post for user_posts in updates.values() for post in user_posts.values()
+            )
+            build_atom(posts, destination, site_name, root_url)
+            build_rss(posts, destination, site_name, root_url)
+
+
+def parse_entries(
+    page: Path, url_root: str, static: Path, site_name: str, user: Optional[str] = None
+) -> dict[str, dict[str, str]]:
+    """
+    Parse h-entries within a page
+
+    page: The webpage to fetch entries from
+    url_root: The URL of this page
+    user: Who created the page
+    """
+    entries = {}
+
+    with (page).open("r") as stream:
+        root = BeautifulSoup(stream.read(), "html.parser")
+
+    for node in root.select(".h-entry"):
+        if not node["id"]:
+            LOGGER.warning("Entry for user %s missing id", user)
+            continue
+
+        entry_id = str(node["id"])
+
+        if entry_id in entries:
+            LOGGER.warning("Duplicate entry id for user %s: %s", user, entry_id)
+            continue
+
+        entry: dict[str, str] = {
+            "id": entry_id,
+            "url": f"{url_root}/index.html#{entry_id}",
+        }
+
+        if user:
+            entry["author"] = user
+
+        title_node = node.select_one(".p-name")
+        if title_node:
+            entry["title"] = title_node.text.strip() or ""
+
+        summary_node = node.select_one(".p-summary")
+        if summary_node:
+            entry["summary"] = summary_node.text.strip() or ""
+
+        author_node = node.select_one(".p-author")
+        if author_node:
+            entry["author"] = author_node.text.strip()
+
+        for key, selector in (
+            ("published", "time.dt-published"),
+            ("updated", "time.dt-updated"),
+        ):
+            time_node = node.select_one(selector)
+
+            if time_node is None:
+                continue
+
+            try:
+                datetime.strptime(str(time_node["datetime"]), POST_DATE_FORMAT)
+            except Exception:
+                LOGGER.warning(
+                    "Could not parse date for user %s's post %s: %s",
+                    user,
+                    entry_id,
+                    time_node["datetime"],
+                )
+            else:
+                entry[key] = str(time_node["datetime"])
+
+        if "published" not in entry:
+            LOGGER.warning("Could not find date for user %s's post: %s", user, entry_id)
+            continue
+
+        entry.setdefault("updated", entry["published"])
+
+        summary_node = node.select_one(".p-summary")
+        if summary_node:
+            entry["summary"] = summary_node.text.strip()
+
+        content_node = node.select_one(".e-content")
+
+        if content_node:
+            entry["contents"] = str(content_node)
+            entries[entry_id] = entry
+        else:
+            LOGGER.warning(
+                "Could not find contents for user %s's post: %s", user, entry_id
+            )
+
+    earliest = latest = None
+    for path in static.iterdir():
+        if path.is_file() and re.search(r"^update-\d+$", path.stem):
+            mtime = path.stat().st_mtime
+            if earliest is None or mtime < earliest:
+                earliest = mtime
+
+            if latest is None or mtime > latest:
+                latest = mtime
+
+    if earliest is not None and latest is not None:
+        if earliest == latest:
+            action = "created"
+        else:
+            action = "updated"
+
+        if not user or user == "index":
+            summary = f"{site_name} {action}"
+        else:
+            summary = f"{user} {action} their {site_name}"
+
+        contents = f"<p>{summary}</p>"
+
+        entry = {
+            "id": "",
+            "url": f"{url_root}/index.html",
+            "published": datetime.fromtimestamp(earliest, UTC).strftime(
+                POST_DATE_FORMAT
+            ),
+            "updated": datetime.fromtimestamp(latest, UTC).strftime(POST_DATE_FORMAT),
+            "contents": contents,
+            "summary": summary,
+        }
+
+        if user:
+            entry["author"] = user
+
+        entries[""] = entry
+
+    return entries
+
+
+def build_atom(
+    posts: list[dict[str, str]],
+    directory: Path,
+    site_name: str,
+    root_url,
+    user: Optional[str] = None,
+):
+    now = datetime.now(UTC)
+
+    root = ElementTree.Element("feed", attrib={"xmlns": "http://www.w3.org/2005/Atom"})
+
+    ElementTree.SubElement(root, "id").text = root_url
+    ElementTree.SubElement(root, "title").text = site_name
+    ElementTree.SubElement(root, "updated").text = now.strftime(ATOM_DATE_FORMAT)
+
+    ElementTree.SubElement(
+        root,
+        "link",
+        attrib={"rel": "self", "href": f"{root_url}atom.xml"},
+    )
+
+    ElementTree.SubElement(root, "subtitle").text = "A beocijies site"
+
+    for post in posts:
+        entry = ElementTree.SubElement(root, "entry")
+        ElementTree.SubElement(
+            entry,
+            "link",
+            attrib={"rel": "alternate", "href": post["url"]},
+        )
+        ElementTree.SubElement(entry, "id").text = post["url"]
+
+        author = post.get("author", user or f"A {site_name} user")
+
+        ElementTree.SubElement(
+            ElementTree.SubElement(entry, "author"),
+            "name",
+        ).text = author
+
+        ElementTree.SubElement(entry, "title").text = post.get(
+            "title", f"{site_name} update"
+        )
+        ElementTree.SubElement(entry, "published").text = datetime.strptime(
+            post["published"], POST_DATE_FORMAT
+        ).strftime(ATOM_DATE_FORMAT)
+        ElementTree.SubElement(entry, "updated").text = datetime.strptime(
+            post["updated"], POST_DATE_FORMAT
+        ).strftime(ATOM_DATE_FORMAT)
+
+        ElementTree.SubElement(entry, "content", attrib={"type": "html"}).text = post[
+            "contents"
+        ]
+
+        summary = f"{author} updated a post on {site_name}"
+        ElementTree.SubElement(entry, "summary").text = post.get("summary", summary)
+
+    if user and user != "index":
+        path = directory / user / "atom.xml"
+    else:
+        path = directory / "atom.xml"
+
+    ElementTree.ElementTree(root).write(path, encoding="UTF-8", xml_declaration=True)
+
+
+def build_rss(
+    posts: list[dict[str, str]],
+    directory: Path,
+    site_name: str,
+    root_url,
+    user: Optional[str] = None,
+):
+    now = datetime.now(UTC)
+
+    root = ElementTree.Element(
+        "rss", attrib={"version": "2.0", "xmlns:atom": "http://www.w3.org/2005/Atom"}
+    )
+
+    channel = ElementTree.SubElement(root, "channel")
+    ElementTree.SubElement(channel, "title").text = site_name
+    ElementTree.SubElement(channel, "lastBuildDate").text = now.strftime(
+        RSS_DATE_FORMAT
+    )
+
+    ElementTree.SubElement(channel, "link").text = f"{root_url}rss.xml"
+    ElementTree.SubElement(
+        channel,
+        "atom:link",
+        attrib={"rel": "self", "href": f"{root_url}atom.xml"},
+    )
+
+    ElementTree.SubElement(channel, "description").text = "A beocijies site"
+
+    for post in posts:
+        item = ElementTree.SubElement(channel, "item")
+        ElementTree.SubElement(item, "link").text = post["url"]
+        ElementTree.SubElement(item, "guid").text = post["url"]
+        ElementTree.SubElement(item, "title").text = post.get(
+            "title", f"{site_name} update"
+        )
+        ElementTree.SubElement(item, "pubDate").text = datetime.strptime(
+            post["updated"], POST_DATE_FORMAT
+        ).strftime(RSS_DATE_FORMAT)
+
+        author = post.get("author", user or f"A {site_name} user")
+        summary = f"{author} updated a post on their {site_name}"
+        ElementTree.SubElement(item, "description").text = post.get("summary", summary)
+
+    if user and user != "index":
+        path = directory / user / "rss.xml"
+    else:
+        path = directory / "rss.xml"
+
+    ElementTree.ElementTree(root).write(path, encoding="UTF-8")
+
+
+def sort_posts(posts: Iterable[dict[str, str]]) -> list[dict[str, str]]:
+    # I don't think atom/rss actually require entries to be in a specific
+    # order but we're going to sort to put the newest first since that's
+    # how they'll be read and we'll further sort by author/id (although
+    # reverse-alphabetically) just to ensure a consistent post order
+    return sorted(
+        posts,
+        key=lambda post: (
+            post["updated"],
+            post["published"],
+            post.get("author", ""),
+            post["id"],
+        ),
+        reverse=True,
+    )
 
 
 def send_notification(message):
