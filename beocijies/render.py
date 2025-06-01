@@ -309,7 +309,11 @@ def render(
 
             LOGGER.info("rendering global feed")
             posts = sort_posts(
-                post for user_posts in updates.values() for post in user_posts.values()
+                post
+                for user, user_posts in updates.items()
+                for post in user_posts.values()
+                if Feed(config["users"].get(user, {}).get("feed", "personal"))
+                == Feed.PUBLIC
             )
             build_atom(posts, destination, site_name, root_url)
             build_rss(posts, destination, site_name, root_url)
