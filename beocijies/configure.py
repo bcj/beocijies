@@ -1,12 +1,14 @@
 """
 Configure the website
 """
+
 import json
 import logging
 import re
+from enum import Enum
 from pathlib import Path
 from shutil import copy2, move, rmtree
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import requests
 from jinja2 import Template
@@ -14,6 +16,7 @@ from jinja2 import Template
 from beocijies.version import __version__
 
 FILENAME = "settings.json"
+UPDATES_FILENAME = "updates.json"
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9-]+$")
 FORBIDDEN_NAMES = {"#base", "#default"}
@@ -44,6 +47,8 @@ BASE_TEMPLATE = """<!DOCTYPE html>
                 <img style="max-width: 100%; max-height: 500px;" src="{{latest_image}}" alt="{{me}} updating their {{site_name}} site">
             {%- endif %}
             <hr>
+            {% if has_feed %}🛜 <a href="./atom.xml">Atom</a>/<a href="./rss.xml">RSS</a>
+            <hr>{%- endif %}
             <a href="https://github.com/bcj/beocijies/">make your own site</a>
         </footer>
     </body>
@@ -62,8 +67,7 @@ DEFAULT_TEMPLATE = """{% extends "#base.html.jinja2" %}
 """
 
 
-NGINX_TEMPLATE = """
-server {
+NGINX_TEMPLATE = """server {
     server_name {% if prefix %}{{prefix}}.{{domain}}{% else %}{{domain}}{% if not local %} www.{{domain}}{% endif %}{% endif %};
     listen 80;
     listen [::]:80;
@@ -72,7 +76,7 @@ server {
         root {{path}};
     }
 }
-{% for user in users %}
+{% for user in users if not user == "index" %}
 server {
     server_name {% if prefix %}{{prefix}}.{% else %}{% if not local %}www.{{url_safe_name(user)}}.{{domain}} {% endif %}{% endif %}{{url_safe_name(user)}}.{{domain}};
     listen 80;
@@ -93,7 +97,7 @@ HTTPD_TEMPLATE = """
     ServerName {% if prefix %}{{prefix}}.{{domain}}{% else %}{{domain}}{% if not local%}
     ServerAlias www.{{domain}}{% endif %}{% endif %}
 </VirtualHost>
-{% for user in users %}
+{% for user in users if not user == "index" %}
 <VirtualHost *:80>
     {% if url_path %}<Directory "{{url_path}}">
         {% endif %}DocumentRoot "{{path}}/{{user}}"{% if url_path %}
@@ -107,6 +111,12 @@ HTTPD_TEMPLATE = """
 LOGGER = logging.getLogger("beocijies")
 
 
+class Feed(Enum):
+    NONE = "none"
+    PERSONAL = "personal"
+    PUBLIC = "public"
+
+
 def create(
     directory: Path,
     destination: Path,
@@ -116,8 +126,8 @@ def create(
     domain: str = "localhost",
     prefix: Optional[str] = None,
     language: Optional[str] = None,
-    allowed_agents: Optional[List[str]] = None,
-    disallowed_agents: Optional[List[str]] = None,
+    allowed_agents: Optional[list[str]] = None,
+    disallowed_agents: Optional[list[str]] = None,
     robots: bool = False,
     subdomains: bool = False,
     local: bool = False,
@@ -150,7 +160,7 @@ def create(
     httpd: where to save apache configurations (experimental)
     protocol: http or https
     """
-    config: Dict[str, Optional[Union[str, bool, dict]]] = {
+    config: dict[str, Optional[Union[str, bool, dict]]] = {
         "version": __version__,
         "destination": str(destination.absolute()),
         "name": name,
@@ -169,11 +179,12 @@ def create(
         "neighbours": {},
     }
 
-    if test_destination:
-        config["test-destination"] = str(test_destination.absolute())
-
     directory.mkdir(parents=True, exist_ok=True)
     destination.mkdir(parents=True, exist_ok=True)
+
+    if test_destination:
+        config["test-destination"] = str(test_destination.absolute())
+        test_destination.mkdir(parents=True, exist_ok=True)
 
     existing_users = {}
     config_file = directory / FILENAME
@@ -217,9 +228,18 @@ def create(
             if name == "index":
                 continue
 
-            add_user(directory, name, **info)
+            feed_value = info.pop("feed", None)
+            feed = Feed(feed_value) if feed_value else None
 
-    add_user(directory, "index", public=False, nginx=nginx, httpd=httpd)
+            add_user(directory, name, feed=feed, **info)
+
+    add_user(
+        directory,
+        "index",
+        feed=Feed.PUBLIC,
+        nginx=nginx,
+        httpd=httpd,
+    )
 
 
 def add_user(
@@ -227,6 +247,7 @@ def add_user(
     name: str,
     *,
     public: bool = True,
+    feed: Optional[Feed] = None,
     nginx: Optional[Path] = None,
     httpd: Optional[Path] = None,
 ):
@@ -240,9 +261,14 @@ def add_user(
     directory: the directory containing the config file
     name: the name of the user
     public: whether the user should be included in the public index
+    feed: Whether to include the user in feed updates. If not supplied,
+        the feed will be PUBLIC if public=True and PERSONAL if not.
     nginx: where to save nginx configurations
     httpd: where to save apache configurations (experimental)
     """
+    if feed is None:
+        feed = Feed.PUBLIC if public else Feed.PERSONAL
+
     check_name(name)
 
     path = directory / FILENAME
@@ -257,8 +283,12 @@ def add_user(
         LOGGER.info("creating user %s", name)
         added = True
 
+    user_config: dict[str, Union[str, bool]] = {"feed": feed.value}
+
     if name != "index":
-        config["users"][name] = {"public": public}
+        user_config["public"] = public
+
+    config["users"][name] = user_config
 
     save_config(config, directory)
 
@@ -269,6 +299,8 @@ def add_user(
     if not template.exists():
         LOGGER.debug("Creating template %s", template)
         copy2(templates / "#default.html.jinja2", template)
+        # The page was last updated now, not default template edit time
+        template.touch(exist_ok=True)
 
     LOGGER.debug("Creating static directory")
     (directory / "static" / name).mkdir(exist_ok=True)
@@ -473,7 +505,7 @@ def url_safe_name(name: str) -> str:
     return name.encode("punycode").decode("ascii")
 
 
-def _write_nginx(directory: Path, config: Dict[str, Any], certbot: bool = True):
+def _write_nginx(directory: Path, config: dict[str, Any], certbot: bool = True):
     LOGGER.info("Generating nginx configuration")
     domain, *rest = config["domain"].split("/", 1)
     if rest:
@@ -529,7 +561,7 @@ def _write_nginx(directory: Path, config: Dict[str, Any], certbot: bool = True):
         )
 
 
-def _write_httpd(path: Path, config: Dict[str, Any], certbot: bool = True):
+def _write_httpd(path: Path, config: dict[str, Any], certbot: bool = True):
     LOGGER.info("Generating httpd (apache) configuration")
     domain, *rest = config["domain"].split("/", 1)
     if rest:

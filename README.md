@@ -14,7 +14,7 @@ Quick Links:
 
 # Install
 
-Beocijies is being written/tested against Python 3.8.
+Beocijies is being written/tested against Python 3.9.
 
 Beocijies is available on PyPI and can be installed by running:
 ```sh
@@ -52,7 +52,7 @@ You should adapt the rules to whatever is the most fun for you and your friends.
 Some ideas on how you can set up your site to match your needs:
 * Have people come over and make edits on the server (how beocijies.com works)
 * Have people make their pages on a flash drive you carry around (how m.beocijies.com works)
-* Allow people to create remote pages by sending you postcards with the code on it (Maggie's idea)
+* Allow people to create remote pages by sending you postcards with the code on it (Maggie's idea, how mail.beocijies.com works)
 * Have people describe their website to you over the phone, watching the page update as you implement it
 * Have people come over in VR chat and make their website there
 
@@ -71,9 +71,9 @@ This code has only been tested on macOS and linux.
 It should _probably_ work with WSL 2.0 and maybe even normal Windows?
 Good luck.
 
-### Python 3.8 or later
+### A version of Python still receiving security updates
 
-The code used to create all the configuration files and to render people's pages (see the section on [Jinja](#jinja) for more details) needs at least this recent of Python.
+The code used to create all the configuration files and to render people's pages (see the section on [Jinja](#jinja) for more details) needs to be [actively supported](https://devguide.python.org/versions/) (released in the last 5 years). Currently, the minimum supported version is Python 3.9.
 
 As long as you're fine manually copying the files over, this actually could be done from a different computer.
 
@@ -179,11 +179,25 @@ Users are made private by default, but can be made public using the `--public` f
 beocijies add NAME --public
 ```
 
+By default, users will have [Atom/RSS](#atom-rss-feeds) feeds created for their page.
+If they're listed in the public directory, their feed entries will also be added to the global feed.
+To turn this off, pass the `--no-feed` flag:
+```sh
+beocijies add NAME --no-feed
+```
+
+If a user would like to have a personal Atom/RSS feed and wants to be listed in the global directory, but doesn't want their posts in the global feed, used the `--no-global-feed` flag:
+```sh
+beocijies add NAME --no-global-feed
+```
+
 **NOTE**: No Changes will take affect on your site until you [render it](#rendering-your-site).
 
 ### Updating Users
 
-If a user wants to change their public/private status, you should rerun add with/without the `--public` flag.
+If a user wants to change their public/private status, you should rerun `add` with/without the `--public` flag.
+
+If a user wants to change their Atom/RSS feed settings, rerun `add` passing `--feed` (personal feed and global feed if the account is public), `--no-global-feed` (personal feed but no global feed), or `--no-feed` (no feeds for the user at all)
 
 If a user wants to change their username, use the rename command:
 ```
@@ -264,6 +278,30 @@ The users page will be in the `templates` directory and will be named `USERNAME.
 This template will be rendered to `domain/USER/index.html`.
 The user directory will also contain any files the user adds to their static folder.
 What they can add is up to your discretion, but I recommend against allowing the user additional pages or allowing them separate CSS or JavaScript files.
+
+### Atom/RSS Feeds
+
+Beocijies supports generating Atom & RSS feeds both for individual users (at `domain/USER/atom.xml` & `domain/USER/rss.xml`), and for the entire site (at `domain/atom.xml` & `domain/rss.xml`) and the default footer will include these links.
+Whenever you add an update image to a user's static directory, an entry will be added with the message "{{user(name)}} updated their {{site_name}} site".
+If you are running the renderer with the `--live` flag, it will not update until the renderer completes.
+
+To change feed settings for a user, [update their user](#updating-users) passing `--feed`, `--no-feed`, `--no-global-feed`.
+
+To turn off the global feed completely, run update for the user `index`.
+For the `index` user, `--no-global-feed` will disable the global feed and `--no-feeds` will disable local feeds for all users.
+
+**NOTE**: These changes will not take effect until you render the site.
+
+#### Custom Feed Entries
+
+Users can generate their own custom Atom/RSS entries using (a subset of) the [h-entry microformat](https://microformats.org/wiki/h-entry).
+To be parsed by the beocijies renderer, create an element (we recommend but to require it to be an [article](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/article) element) with `h-entry` as a class, id as its unique id, and with elements containing the following information:
+* `*` (`class="p-name"`): The title of the entry. The full text of the supplied element wil be used
+* `*` (`class="p-author"`): The text of this element will be used as the author of the article. If missing, the user's name will be used.
+* `time` (`class="dt-published`, `datetime="YYYY-MM-DDTHH:MM:SS±XXXX"`): The time the post was created.
+* `time` (`class="dt-updated`, `datetime="YYYY-MM-DDTHH:MM:SS±XXXX"`): The time the post was last updated. Will be the published time unless otherwise supplied.
+* `*` (`class="p-summary"`): A text summary of the entry.
+* `*` (`class="e-content"`): The body of the post.
 
 ### Jinja
 

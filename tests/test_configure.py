@@ -1,6 +1,7 @@
 """
 Tests for the configuration module
 """
+
 import json
 import re
 from pathlib import Path
@@ -54,7 +55,7 @@ def test_url_safe_name():
 
 
 def test_add_user(tmp_path: Path):
-    from beocijies.configure import FILENAME, add_user
+    from beocijies.configure import FILENAME, Feed, add_user
 
     static = tmp_path / "static"
     static.mkdir()
@@ -83,15 +84,21 @@ def test_add_user(tmp_path: Path):
     # add an index
     add_user(tmp_path, "index")
     with config.open() as stream:
-        assert json.load(stream)["users"] == {}
+        assert json.load(stream)["users"] == {"index": {"feed": "public"}}
     assert (static / "index").is_dir()
     assert (templates / "index.html.jinja2").is_file()
     assert (templates / "index.html.jinja2").read_text() == "default"
 
     # add a user
-    add_user(tmp_path, "user", public=True)
+    add_user(tmp_path, "user", public=True, feed=Feed.PERSONAL)
     with config.open() as stream:
-        assert json.load(stream)["users"] == {"user": {"public": True}}
+        assert json.load(stream)["users"] == {
+            "index": {"feed": "public"},
+            "user": {
+                "feed": "personal",
+                "public": True,
+            },
+        }
     assert (static / "user").is_dir()
     assert (templates / "user.html.jinja2").is_file()
     assert (templates / "user.html.jinja2").read_text() == "default"
@@ -99,9 +106,15 @@ def test_add_user(tmp_path: Path):
     # update a user without overwriting their stuff
     (templates / "user.html.jinja2").write_text("custom")
 
-    add_user(tmp_path, "user", public=False)
+    add_user(tmp_path, "user", public=False, feed=Feed.NONE)
     with config.open() as stream:
-        assert json.load(stream)["users"] == {"user": {"public": False}}
+        assert json.load(stream)["users"] == {
+            "index": {"feed": "public"},
+            "user": {
+                "feed": "none",
+                "public": False,
+            },
+        }
     assert (static / "user").is_dir()
     assert (templates / "user.html.jinja2").is_file()
     assert (templates / "user.html.jinja2").read_text() == "custom"
@@ -111,11 +124,18 @@ def test_add_user(tmp_path: Path):
     (static / "user2").mkdir()
     (static / "user2" / "file").write_text("hi")
 
-    add_user(tmp_path, "user2")
+    add_user(tmp_path, "user2", public=True)
     with config.open() as stream:
         assert json.load(stream)["users"] == {
-            "user": {"public": False},
-            "user2": {"public": True},
+            "index": {"feed": "public"},
+            "user": {
+                "feed": "none",
+                "public": False,
+            },
+            "user2": {
+                "feed": "public",
+                "public": True,
+            },
         }
     assert (static / "user2").is_dir()
     assert (static / "user2" / "file").read_text() == "hi"
@@ -335,7 +355,12 @@ def test_rename_user(tmp_path: Path):
     # actually rename
     rename_user(tmp_path, "dog", "cat")
     with config.open() as stream:
-        assert json.load(stream)["users"] == {"cat": {"public": True}}
+        assert json.load(stream)["users"] == {
+            "cat": {
+                "feed": "public",
+                "public": True,
+            }
+        }
     assert (static / "cat").is_dir()
     assert not (static / "dog").is_dir()
     assert (templates / "cat.html.jinja2").is_file()
@@ -404,7 +429,7 @@ def test_delete_user(tmp_path: Path):
 
 
 def test_create(tmp_path):
-    from beocijies.configure import FILENAME, add_user, create
+    from beocijies.configure import FILENAME, Feed, add_user, create
 
     create(tmp_path, tmp_path / "destination", "beocijies")
     config = tmp_path / FILENAME
@@ -414,7 +439,7 @@ def test_create(tmp_path):
     assert data["destination"] == str(tmp_path / "destination")
     assert data["name"] == "beocijies"
     assert data["domain"] == "localhost"
-    assert data["users"] == {}
+    assert data["users"] == {"index": {"feed": "public"}}
     assert (tmp_path / "templates").is_dir()
     assert (tmp_path / "templates" / "#base.html.jinja2").is_file()
     assert (tmp_path / "templates" / "#default.html.jinja2").is_file()
@@ -439,7 +464,7 @@ def test_create(tmp_path):
     assert data["destination"] == str(tmp_path / "destination")
     assert data["name"] == "beocijies2"
     assert data["domain"] == "beocijies2.example.com"
-    assert data["users"] == {}
+    assert data["users"] == {"index": {"feed": "public"}}
     assert (tmp_path / "templates").is_dir()
     assert (tmp_path / "templates" / "#base.html.jinja2").read_text() == "base"
     assert (tmp_path / "templates" / "#default.html.jinja2").read_text() == "default"
@@ -450,7 +475,7 @@ def test_create(tmp_path):
 
     # test copy existing users
     add_user(tmp_path, "dog", public=True)
-    add_user(tmp_path, "cat", public=False)
+    add_user(tmp_path, "cat", public=False, feed=Feed.NONE)
     create(
         tmp_path,
         tmp_path / "destination",
@@ -465,4 +490,14 @@ def test_create(tmp_path):
     assert data["test-destination"] == str(tmp_path / "temp")
     assert data["name"] == "threocijies"
     assert data["domain"] == "beocijies3.example.com"
-    assert data["users"] == {"dog": {"public": True}, "cat": {"public": False}}
+    assert data["users"] == {
+        "index": {"feed": "public"},
+        "dog": {
+            "feed": "public",
+            "public": True,
+        },
+        "cat": {
+            "feed": "none",
+            "public": False,
+        },
+    }

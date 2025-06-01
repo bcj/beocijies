@@ -4,24 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beocijies"
-version = "0.9.0"
+version = "0.10.0"
 authors = [
   { name="bcj", email="bcj@beocijies.com" },
 ]
 description = "A site generator for small handmade sites"
 readme = "README.md"
-license = {file = "LICENSE.md"}
-requires-python = ">=3.8"
+# license-files = ["LICENSE.md"]
+requires-python = ">=3.9"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: POSIX",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Internet",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: Site Management",
@@ -29,7 +30,9 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "beautifulsoup4",
     "jinja2",
+    "notify-py",
     "requests",
 ]
 

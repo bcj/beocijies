@@ -1,6 +1,7 @@
 """
 Run beocijies from the command line
 """
+
 import logging
 import re
 from argparse import ArgumentParser
@@ -219,6 +220,19 @@ def main(input_args: Optional[List[str]] = None):
     render_parser.add_argument(
         "--live", action="store_true", help="Watch for further changes"
     )
+    notify_group = render_parser.add_mutually_exclusive_group()
+    notify_group.add_argument(
+        "--notify",
+        action="store_true",
+        help="Send a desktop notification if rendering fails",
+    )
+    notify_group.add_argument(
+        "--no-notify",
+        dest="notify",
+        action="store_false",
+        help="Don't send a desktop notification if rendering fails",
+    )
+    render_parser.set_defaults(notify=None)
     destination_group = render_parser.add_mutually_exclusive_group()
     destination_group.add_argument(
         "--production",
@@ -317,11 +331,15 @@ def main(input_args: Optional[List[str]] = None):
     elif args.command == "disconnect":
         forget_users(args.directory, args.name)
     elif args.command == "render":
+        if args.notify is None:
+            args.notify = args.live
+
         render(
             args.directory,
             destination=args.destination or args.production,
-            users=args.users,
+            users=set(args.users),
             live=args.live,
+            notify=args.notify,
             fresh=args.fresh,
             link_type=args.link_type,
         )

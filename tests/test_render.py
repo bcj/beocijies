@@ -3,6 +3,8 @@ from pathlib import Path
 
 from pytest import raises
 
+FIXTURES = Path(__file__).parent / "fixtures"
+
 
 def test_render(tmp_path: Path):
     from beocijies.configure import add_user, create, delete_user
@@ -157,4 +159,238 @@ def test_render(tmp_path: Path):
     assert (other / "secret" / "index.html").is_file()
     assert (other / "secret" / "index.html").read_text() == (
         "<a href='https://www.example.com/secret'>secret</a>"
+    )
+
+
+def test_parse_entries_file_only(tmp_path: Path):
+    from beocijies.render import parse_entries
+
+    page = tmp_path / "page.html"
+
+    with page.open("w") as stream:
+        stream.write("<html><body>My empty beocijies page</body></html>")
+
+    # no updates
+    assert {} == parse_entries(
+        page, "https://example.com", FIXTURES / "no-updates", "beocijies"
+    )
+
+    # created
+    assert {
+        "": {
+            "contents": "<p>beocijies created</p>",
+            "id": "",
+            "published": "2025-06-01T00:15:15+0000",
+            "summary": "beocijies created",
+            "updated": "2025-06-01T00:15:15+0000",
+            "url": "https://example.com/index.html",
+        },
+    } == parse_entries(page, "https://example.com", FIXTURES / "created", "beocijies")
+
+    assert {
+        "": {
+            "author": "bcj",
+            "contents": "<p>bcj created their beocijies</p>",
+            "id": "",
+            "published": "2025-06-01T00:15:15+0000",
+            "summary": "bcj created their beocijies",
+            "updated": "2025-06-01T00:15:15+0000",
+            "url": "https://example.com/bcj/index.html",
+        },
+    } == parse_entries(
+        page,
+        "https://example.com/bcj",
+        FIXTURES / "created",
+        "beocijies",
+        user="bcj",
+    )
+
+    # updated
+    assert {
+        "": {
+            "contents": "<p>beocijies updated</p>",
+            "id": "",
+            "published": "2025-06-01T00:15:15+0000",
+            "summary": "beocijies updated",
+            "updated": "2025-06-01T00:18:50+0000",
+            "url": "https://example.com/index.html",
+        },
+    } == parse_entries(page, "https://example.com", FIXTURES / "updated", "beocijies")
+
+    assert {
+        "": {
+            "author": "bcj",
+            "contents": "<p>bcj updated their beocijies</p>",
+            "id": "",
+            "published": "2025-06-01T00:15:15+0000",
+            "summary": "bcj updated their beocijies",
+            "updated": "2025-06-01T00:18:50+0000",
+            "url": "https://example.com/bcj/index.html",
+        },
+    } == parse_entries(
+        page,
+        "https://example.com/bcj",
+        FIXTURES / "updated",
+        "beocijies",
+        user="bcj",
+    )
+
+
+def test_parse_entries(tmp_path: Path):
+    from beocijies.render import parse_entries
+
+    page = tmp_path / "page.html"
+
+    with page.open("w") as stream:
+        stream.write(
+            """
+            <html>
+            <head><meta charset="UTF-8"></head>
+            <body>
+            <main>
+                <!-- fully defined -->
+                <article id="entry-1" class="h-entry">
+                    <h1 class="p-name">Entry 1 Title</h1>
+                    <h3 class="p-author">
+                        bcj
+                    </h3>
+                    <div>
+                        published: <time
+                            class="dt-published"
+                            datetime="2025-01-02T03:04:05-0600"
+                        >January 2nd 3:04 AM CST</time>
+                        <br>
+                        updated: <time
+                            class="dt-updated"
+                            datetime="2025-07-08T09:10:11-0500"
+                        >July 7th 8:09 AM CDT</time>
+                    </div>
+                    <div class="p-summary" style="display: none">A short summary</div>
+                    <div class="e-content"><ol><li>one</li></ol></div>
+                </article>
+
+                <!-- duplicate id, ignore -->
+                <article id="entry-1" class="h-entry">
+                    <h1 class="p-name">Entry 1a Title</h1>
+                    <h3 class="p-author">
+                        bcj-a
+                    </h3>
+                    <div>
+                        published: <time
+                            class="dt-published"
+                            datetime="2026-01-02T03:04:05-0600"
+                        >January 2nd 3:04 AM CST</time>
+                        <br>
+                        updated: <time
+                            class="dt-updated"
+                            datetime="2026-07-08T09:10:11-0500"
+                        >July 7th 8:09 AM CDT</time>
+                    </div>
+                    <div class="p-summary" style="display: none">The short summary</div>
+                    <div class="e-content"><ol><li>alpha</li></ol></div>
+                </article>
+
+                <!-- minimal -->
+                <article id="entry-2" class="h-entry">
+                    <h1>Entry 2 Title</h1>
+                    <div>
+                        published: <time
+                            class="dt-published"
+                            datetime="2025-02-03T04:05:06-0700"
+                        >February 3rd 4:05 AM MST</time>
+                    </div>
+                    <div class="e-content">a<br>b</div>
+                </article>
+
+                <!-- invalid date, ignore -->
+                <article id="entry-2a" class="h-entry">
+                    <h1>Entry 2 Title</h1>
+                    <div>
+                        published: <time
+                            class="dt-published"
+                            datetime="February 3rd 4:05 AM MST"
+                        >February 3rd 4:05 AM MST</time>
+                    </div>
+                    <div class="e-content">alpha<br>bravo</div>
+                </article>
+
+                <!-- missing contents, ignore -->
+                <article id="entry-2b" class="h-entry">
+                    <h1>Entry 2 Title</h1>
+                    <div>
+                        published: <time
+                            class="dt-published"
+                            datetime="February 3rd 4:05 AM MST"
+                        >February 3rd 4:05 AM MST</time>
+                    </div>
+                    <div>contents</div>
+                </article>
+            </main>
+            </body>
+            </html>
+            """
+        )
+
+    assert {
+        "": {
+            "contents": "<p>beocijies updated</p>",
+            "id": "",
+            "published": "2025-06-01T00:15:15+0000",
+            "summary": "beocijies updated",
+            "updated": "2025-06-01T00:18:50+0000",
+            "url": "https://example.com/index.html",
+        },
+        "entry-1": {
+            "id": "entry-1",
+            "url": "https://example.com/index.html#entry-1",
+            "author": "bcj",
+            "published": "2025-01-02T03:04:05-0600",
+            "updated": "2025-07-08T09:10:11-0500",
+            "title": "Entry 1 Title",
+            "summary": "A short summary",
+            "contents": '<div class="e-content"><ol><li>one</li></ol></div>',
+        },
+        "entry-2": {
+            "id": "entry-2",
+            "url": "https://example.com/index.html#entry-2",
+            "published": "2025-02-03T04:05:06-0700",
+            "updated": "2025-02-03T04:05:06-0700",
+            "contents": '<div class="e-content">a<br/>b</div>',
+        },
+    } == parse_entries(page, "https://example.com", FIXTURES / "updated", "beocijies")
+
+    assert {
+        "": {
+            "author": "bcj",
+            "contents": "<p>bcj updated their beocijies</p>",
+            "id": "",
+            "published": "2025-06-01T00:15:15+0000",
+            "summary": "bcj updated their beocijies",
+            "updated": "2025-06-01T00:18:50+0000",
+            "url": "https://example.com/bcj/index.html",
+        },
+        "entry-1": {
+            "id": "entry-1",
+            "url": "https://example.com/bcj/index.html#entry-1",
+            "author": "bcj",
+            "published": "2025-01-02T03:04:05-0600",
+            "updated": "2025-07-08T09:10:11-0500",
+            "title": "Entry 1 Title",
+            "summary": "A short summary",
+            "contents": '<div class="e-content"><ol><li>one</li></ol></div>',
+        },
+        "entry-2": {
+            "id": "entry-2",
+            "url": "https://example.com/bcj/index.html#entry-2",
+            "author": "bcj",
+            "published": "2025-02-03T04:05:06-0700",
+            "updated": "2025-02-03T04:05:06-0700",
+            "contents": '<div class="e-content">a<br/>b</div>',
+        },
+    } == parse_entries(
+        page,
+        "https://example.com/bcj",
+        FIXTURES / "updated",
+        "beocijies",
+        user="bcj",
     )
